@@ -4,8 +4,8 @@ import plotly.graph_objects as go
 
 from trame.widgets import html, trame, vuetify3 as vuetify, plotly
 
-from deepfield.field.plot_utils import get_slice_trisurf
-from deepfield.field import States
+from geocode.field.utils.plot_utils import get_slice_trisurf
+from geocode.field import States
 
 from .config import state, ctrl, FIELD
 

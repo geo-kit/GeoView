@@ -89,10 +89,8 @@ def update_ts_widgets(data1dToShow, **kwargs):
     if state.wellData:
         state.gridItemToShow = None
         wellnames = []
-        for well in FIELD['model'].wells:
-            if 'RESULTS' in well:
-                if data1dToShow in well.RESULTS:
-                    wellnames.append(well.name)
+        if 'RESULTS' in FIELD['model'].wells:
+            wellnames = FIELD['model'].wells.names
         state.wellnames = wellnames
     if state.gridData:
         state.wellNameToShow = None
@@ -107,7 +105,7 @@ def add_line_to_plot():
         return
 
     if state.gridData:
-        data = FIELD['model'].states[state.data1dToShow]
+        data = getattr(FIELD['model'].states, state.data1dToShow)
         cells = np.array([state.i_cell, state.j_cell, state.k_cell])
         avr = cells == 'Average'
         if np.any(avr):
@@ -116,7 +114,7 @@ def add_line_to_plot():
         icells = cells[~avr].astype(int)
         if len(icells) > 0:
             data = data[:, *icells]
-        dates = FIELD['model'].result_dates.strftime("%Y-%m-%d")
+        dates = [t.strftime('%Y-%m-%d') for t in FIELD['dates']]
         if np.any(avr):
             cells[avr] = ":"
         name = '{} ({}, {}, {})'.format(state.data1dToShow, *cells)
@@ -198,7 +196,7 @@ def update_pvt_widgets(tableToShow, tableXAxis, **kwargs):
     _ = kwargs
     if tableToShow is None:
         return
-    table = FIELD['model'].tables[tableToShow]
+    table = getattr(FIELD['model'].tables, tableToShow)[0]
     if len(table.domain) == 1:
         state.needDomain = False
     elif len(table.domain) == 2:
@@ -257,7 +255,7 @@ def plot_table(tableToShow, tableXAxis, domainToShow, height, width):
     if tableToShow is None:
         return fig
 
-    table = FIELD['model'].tables[tableToShow]
+    table = getattr(FIELD['model'].tables, tableToShow)[0]
     domain = list(table.domain)
 
     if len(domain) == 1:

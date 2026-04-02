@@ -33,7 +33,7 @@ def set_active_scalars(update_range):
 	"Set active scalars."
 	comp, attr = state.activeField.lower().split('_')
 	field = FIELD['model']
-	data = getattr(field, comp)[attr]
+	data = getattr(getattr(field, comp), attr)
 	actnum = field.grid.actnum_ids
 
 	if comp == 'states':

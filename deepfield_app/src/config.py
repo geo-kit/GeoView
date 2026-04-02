@@ -19,7 +19,7 @@ state, ctrl = server.state, server.controller
 
 jserver = dict(queue=None, results=None)
 
-state.trame__title = "DeepField"
+state.trame__title = "GeoView"
 
 server.cli.add_argument("-vr", "--vtk_remote", action="store_true", help="choosing vtk remote rendering")
 args = server.cli.parse_args()

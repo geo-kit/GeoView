@@ -6,12 +6,12 @@ from trame.widgets import html, client, vuetify3 as vuetify
 from trame.ui.vuetify3 import VAppLayout
 
 try:
-    from deepfield import Field
+    from geocode import Field
 except ModuleNotFoundError:
     try:
-        sys.path.append('../DeepField')
+        sys.path.append('../GeoCode')
     except:
-        raise ModuleNotFoundError("Module deepfield is not found.")
+        raise ModuleNotFoundError("Module GeoCode is not found.")
 
 from .src.config import server, state, ctrl, renderer, jserver
 from .src.home import render_home, make_empty_grid
@@ -53,7 +53,7 @@ with VAppLayout(server, theme=('theme',)) as layout:
     ctrl.update_style = style.update
     with layout.root:
         with vuetify.VAppBar(app=True, clipped_left=True, density="compact"):
-            vuetify.VToolbarTitle("DeepField")
+            vuetify.VToolbarTitle("GeoView")
             vuetify.VSpacer()
             with vuetify.VTabs(v_model=('activeTab', 'home')):
                 vuetify.VTab('Home', value="home")
@@ -63,7 +63,6 @@ with VAppLayout(server, theme=('theme',)) as layout:
                 vuetify.VTab('PVT/RP', value="pvt")
                 vuetify.VTab('Info', value="info")
                 vuetify.VTab('Script', value="script")
-                # vuetify.VTab('Run', value="run")
             vuetify.VSpacer()
 
             with vuetify.VBtn(icon=True, click=ctrl.change_theme):

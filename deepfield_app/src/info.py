@@ -54,5 +54,3 @@ def render_info():
             classes=text_classes, style=text_style)
         vuetify.VCardText("Attributes of faults: " + "{{components_attrs['faults']}}",
             classes=text_classes, style=text_style)
-        vuetify.VCardText("Attributes of aquifers: " + "{{components_attrs['aquifers']}}",
-            classes=text_classes, style=text_style)

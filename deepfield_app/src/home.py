@@ -13,7 +13,7 @@ from vtkmodules.vtkRenderingCore import (
 from trame.widgets import html, vuetify3 as vuetify
 from trame.app import asynchronous
 
-from deepfield import Field
+from geocode import Field
 
 from .config import state, ctrl, FIELD, renderer, actor_names, jserver
 from .common import reset_camera
@@ -129,7 +129,7 @@ def get_path_variants(user_request, **kwargs):
     state.showHistory = False
     if user_request is not None:
         _, ext = os.path.splitext(user_request)
-        arrived = ext.lower() in ['.data', '.hdf5']
+        arrived = ext.lower() == '.data'
     else:
         arrived = False
     state.showDirList = (not state.initialDirState) & (not arrived)
@@ -194,18 +194,17 @@ def process_field(field):
 
     process_grid(field)
     prepare_slices()
-    
     get_field_attributes(field)
     get_field_meta(field)
-    
+
     compute_initial_content(field)
     compute_total_rates(field)
     get_simulation_dates(field)
-    
+
     add_scalars()
     add_wells(field)
     add_faults(field)
-    
+
     render_window.Render()
     reset_camera()
     ctrl.view_update()

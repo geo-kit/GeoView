@@ -17,8 +17,8 @@ from .common import set_active_scalars
 
 
 VTK_VIEW_SETTINGS = {
-    "interactive_ratio": 1,
-    "interactive_quality": 90,
+    # "interactive_ratio": 1,
+    # "interactive_quality": 90,
 }
 
 state.colormaps = sorted(["cividis", "inferno", "jet",
@@ -145,25 +145,31 @@ def update_active_step(activeStep, **kwargs):
 
 def update_wells_status(activeStep):
     "Get wells status."
+    return
+
+    if dataset_names.wells not in FIELD:
+        return
+
     active_step = int(activeStep)
     named_colors = vtk.vtkNamedColors()
     field = FIELD['model']
 
     well_colors = vtk.vtkUnsignedCharArray()
     well_colors.SetNumberOfComponents(3)
-    for well in field.wells:
-        if 'RESULTS' in well.attributes:
+    
+    if 'RESULTS' in field.wells.attributes:
+        for well in field.wells:
             for col in ('WOPR', 'WWPR', 'WGPR'):
-                if col in well.results.columns and well.results.loc[active_step, col] > 0:
+                if col in well.results.columns and well.results[col].iloc[active_step] > 0:
                     well_colors.InsertNextTypedTuple(named_colors.GetColor3ub("Green"))
                     break
             else:
-                if 'WWIR' in well.results.columns and well.results.loc[active_step, 'WWIR'] > 0:
+                if 'WWIR' in well.results.columns and well.results['WWIR'].iloc[active_step] > 0:
                     well_colors.InsertNextTypedTuple(named_colors.GetColor3ub("Blue"))
                     continue
-                well_colors.InsertNextTypedTuple(named_colors.GetColor3ub("RED"))
+                well_colors.InsertNextTypedTuple(named_colors.GetColor3ub("Red"))
         else:
-            well_colors.InsertNextTypedTuple(named_colors.GetColor3ub("RED"))
+            well_colors.InsertNextTypedTuple(named_colors.GetColor3ub("Red"))
 
     FIELD[dataset_names.wells].GetCellData().SetScalars(well_colors)
     render_window.Render()
