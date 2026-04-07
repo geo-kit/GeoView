@@ -7,13 +7,14 @@ import numpy as np
 import time
 
 
-def well_states(well, dates, start_date):
+def well_states(well, rates, dates, start_date):
     "Create dataframe with well results."
-    states_df = pd.concat([dates, pd.DataFrame(well)], axis=1)
-    record0 = pd.DataFrame([[start_date] + [0.0]*(len(well.columns))],
+    states_df = pd.concat([dates, pd.DataFrame(rates)], axis=1)
+    record0 = pd.DataFrame([[start_date] + [0.0]*(len(rates.columns))],
                            columns=states_df.columns)
     states_df = pd.concat([record0, states_df])
-    return states_df
+    states_df['WELL'] = well
+    return states_df[['WELL'] + [col for col in states_df.columns if col != 'WELL']]
 
 def results2field(case, res, output):
     "Convert from JutulDarcy to Field data."
@@ -49,7 +50,13 @@ def results2field(case, res, output):
     welldata = {}
 
     wellnames = res["WELLS"].keys()
-    welldata = {w: {"RESULTS": well_states(pd.DataFrame(res["WELLS"][w]), dates, start_date)} for w in wellnames}
+    if wellnames:
+        welldata = pd.concat([well_states(w,
+                                          pd.DataFrame(res["WELLS"][w]),
+                                          dates,
+                                          start_date) for w in wellnames])
+    else:
+        wellnames = pd.DataFrame({'WELL': wellnames})
 
     output['wellnames'] = wellnames
     output['welldata'] = welldata

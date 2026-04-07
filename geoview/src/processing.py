@@ -17,7 +17,8 @@ def process_grid(field):
     "Prepare field grid data for visualization."
     vtk_grid = field.grid.vtk_grid
 
-    ind_i, ind_j, ind_k = np.unravel_index(field.grid.actnum_ids, field.grid.dimens)
+    dimens = field.grid.dimens.values.ravel()
+    ind_i, ind_j, ind_k = np.unravel_index(field.grid.actnum_ids, dimens)
     for name, val in zip(('I', 'J', 'K'), (ind_i, ind_j, ind_k)):
         array = numpy_to_vtk(val)
         array.SetName(name)
@@ -30,8 +31,8 @@ def process_grid(field):
 
     FIELD['grid'] = vtk_grid
 
-    state.dimens = [int(x) for x in field.grid.dimens]
-    state.total_cells = int(np.prod(field.grid.dimens))
+    state.dimens = [int(x) for x in dimens]
+    state.total_cells = int(np.prod(dimens))
     state.active_cells = len(field.grid.actnum_ids)
 
     bbox = field.grid.bounding_box
@@ -45,15 +46,7 @@ def get_field_attributes(field):
     "Collect attributes in field components."
     state.components_attrs = {}
     for name, comp in field.items():
-        if name in ['wells', 'faults']:
-            attrs = []
-            for node in PreOrderIter(comp.root):
-                attrs.extend(list(node.attributes))
-            attrs = list(set(attrs))
-        else:
-            attrs = list(comp.attributes)
-        state.components_attrs[name] = attrs
-
+        state.components_attrs[name] = list(comp.attributes)
 
     rock_attrs = ['ROCK_'+attr.upper() for attr in field.rock.attributes]
     state_attrs = ['STATES_'+attr.upper() for attr in field.states.attributes]
@@ -63,10 +56,8 @@ def get_field_attributes(field):
         else state.field_attrs[0])
 
     attrs = []
-    for well in field.wells:
-        if 'RESULTS' in well:
-            attrs.extend([k for k in well.RESULTS.columns if k != 'DATE'])
-    attrs = sorted(list(set(attrs)))
+    if 'RESULTS' in field.wells.attributes:
+        attrs = sorted([k for k in field.wells.RESULTS.columns if k not in ['DATE', 'WELL']])
     state.wellsAttrs = attrs
     state.num_wells = len(field.wells.names)
 
@@ -74,18 +65,16 @@ def get_field_attributes(field):
     state.statesAttrs = attrs
 
     attrs = field.tables.attributes
-    state.tables = [t for t in attrs if field.tables[t].domain]
+    state.tables = [t for t in attrs if getattr(field.tables, t)[0].domain]
 
     state.data1d = state.statesAttrs + state.wellsAttrs
 
 def get_field_meta(field):
-    "Get info from field meta."
-    state.fluids = list(field.meta['FLUIDS'])
-    state.units1 = field.meta['HUNITS'][0]
-    state.units2 = field.meta['HUNITS'][1]
-    state.units3 = field.meta['HUNITS'][2]
-    state.units4 = field.meta['HUNITS'][3]
-    state.units5 = field.meta['HUNITS'][4]
+    "Get meta info from field."
+    state.fluids = []
+    for fluid in ['WATER', 'OIL', 'GAS', 'DISGAS', 'VAPOIL', 'SOLID']:
+        if (fluid, None) in field._data['RUNSPEC']:
+            state.fluids.append(fluid)
 
 def compute_initial_content(field):
     "Compute initial phase volumes."
@@ -106,19 +95,22 @@ def compute_initial_content(field):
 
 def compute_total_rates(field):
     "Compute total production rates."
-    rates = field.wells.total_rates.fillna(0)
-    rates = rates if len(rates) else {}
-    state.total_oil_production = np.round(rates['WOPR'].sum(), 2) if 'WOPR' in rates else 0
-    state.total_wat_production = np.round(rates['WWPR'].sum(), 2) if 'WWPR' in rates else 0
-    state.total_gas_production = np.round(rates['WGPR'].sum(), 2) if 'WGPR' in rates else 0
+    if 'RESULTS' not in field.wells:
+        return
+
+    results = field.wells.RESULTS
+    state.total_oil_production = np.round(results['WOPR'].sum(), 2) if 'WOPR' in results else 0
+    state.total_wat_production = np.round(results['WWPR'].sum(), 2) if 'WWPR' in results else 0
+    state.total_gas_production = np.round(results['WGPR'].sum(), 2) if 'WGPR' in results else 0
 
 def get_simulation_dates(field):
     "Get simulation dates."
-    FIELD['dates'] = (field.result_dates if len(field.result_dates) else
-                      np.array([pd.to_datetime(field.meta['START'])]))
+    if 'RESULTS' not in field.wells.attributes:
+        FIELD['dates'] = np.array([x[1] for x in field._data['RUNSPEC'] if x[0] == 'START'])
+    else:
+        FIELD['dates'] = np.array(sorted(field.wells.RESULTS.DATE.unique()))
 
     state.stateDate = FIELD['dates'][0].strftime('%Y-%m-%d')
-    state.startDate = FIELD['dates'][0].strftime('%Y-%m-%d')
     state.lastDate = FIELD['dates'][-1].strftime('%Y-%m-%d')
 
     state.max_timestep = len(FIELD['dates']) - 1
@@ -170,7 +162,7 @@ def add_scalars():
 
 def get_well_blocks(field):
     "Get mask for well blocks."
-    mask = np.full(field.grid.dimens, 0)
+    mask = np.full(field.grid.dimens.values.ravel(), 0)
     field.wells.get_blocks()
     for well in field.wells:
         mask[*well.blocks.T] = 1
@@ -190,8 +182,6 @@ def add_wells(field):
     dz = grid.bounding_box[-1] - z_min
     z_min = z_min - 0.1*dz
 
-    field.wells.drop_incomplete(logger=field._logger, required=['WELLTRACK'])
-
     n_wells = len(field.wells.names)
     labeled_points = vtk.vtkPoints()
     labels = vtk.vtkStringArray()
@@ -206,7 +196,7 @@ def add_wells(field):
     for i, well in enumerate(field.wells):
         labels.SetValue(i, well.name)
 
-        welltrack = well.welltrack[:, :3]
+        welltrack = well.welltrack[['X', 'Y', 'Z']].values
 
         first_point = welltrack[0, :3].copy()
         first_point[-1] = z_min

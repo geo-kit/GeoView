@@ -1,4 +1,4 @@
-# DeepField-app
+# GeoView
 
 Web application for simulation and visualization of reservoir models.
 

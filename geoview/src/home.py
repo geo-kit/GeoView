@@ -4,6 +4,7 @@ from glob import glob
 from uuid import uuid4
 import asyncio
 import vtk
+import pandas as pd
 
 from vtkmodules.vtkRenderingCore import (
     vtkActor,
@@ -13,7 +14,7 @@ from vtkmodules.vtkRenderingCore import (
 from trame.widgets import html, vuetify3 as vuetify
 from trame.app import asynchronous
 
-from deepfield import Field
+from geocode import Field
 
 from .config import state, ctrl, FIELD, renderer, actor_names, jserver
 from .common import reset_camera
@@ -129,7 +130,7 @@ def get_path_variants(user_request, **kwargs):
     state.showHistory = False
     if user_request is not None:
         _, ext = os.path.splitext(user_request)
-        arrived = ext.lower() in ['.data', '.hdf5']
+        arrived = ext.lower() == '.data'
     else:
         arrived = False
     state.showDirList = (not state.initialDirState) & (not arrived)
@@ -194,18 +195,17 @@ def process_field(field):
 
     process_grid(field)
     prepare_slices()
-    
     get_field_attributes(field)
     get_field_meta(field)
-    
+
     compute_initial_content(field)
     compute_total_rates(field)
     get_simulation_dates(field)
-    
+
     add_scalars()
     add_wells(field)
     add_faults(field)
-    
+
     render_window.Render()
     reset_camera()
     ctrl.view_update()
@@ -303,17 +303,18 @@ async def simulate_async():
 
         field = FIELD['model']
 
-        for k in field.states.attributes:
-            delattr(field.states, k)
-
-        field.states['PRESSURE'] = results['pressure']
+        field.states.pressure = results['pressure']
         for k, v in results['saturations'].items():
-            field.states[k] = v
+            setattr(field.states, k, v)
+
+        new_attrs = ['PRESSURE',] + list(results['saturations'].keys())
+        for k in field.states.attributes:
+            if k not in new_attrs:
+                delattr(field.states, k)
+
         field.states.to_spatial()
         
-        field.wells.update(results['welldata'])
-
-        field.states.dates = field.result_dates
+        field.wells.results = results['welldata']
 
         update_dynamics(field)
 

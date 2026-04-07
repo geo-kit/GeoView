@@ -3,18 +3,18 @@ from setuptools import setup, find_packages
 VERSION = "0.0.1"
 
 setup(
-    name='DeepField-app',
+    name='GeoView',
     packages=find_packages(),
     version=VERSION,
-    url='https://github.com/deepfield-team/DeepField-app',
+    url='https://github.com/geo-kit/GeoView',
     license='GNU General Public License v3.0',
-    author='deepfield-team',
+    author='geo-kit',
     author_email='',
-    description='DeepField web application.',
+    description='GeoView web application.',
     zip_safe=False,
     platforms='any',
     install_requires=[
-        "DeepField @ git+https://github.com/deepfield-team/DeepField.git@5606fff36826baa133278448a21c05995e13b00b",
+        "GeoCode @ git+https://github.com/github.com/geo-kit/GeoCode",
         "trame",
         "trame-vuetify",
         "trame-vtk",
@@ -25,7 +25,7 @@ setup(
     ],
     entry_points={
     'console_scripts': [
-        'deepfield-app = deepfield_app.app:server_start',
+        'geoview = geoview.app:server_start',
     ],
     },
     extras_require={
