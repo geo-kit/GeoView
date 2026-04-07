@@ -11,7 +11,6 @@ def f(field): #do not change this line
 """
 state.scriptOutput = ''
 state.scriptRunning = False
-state.fieldRestoring = False
 
 
 @state.change("scriptRunning")
@@ -26,9 +25,6 @@ def run_script(scriptRunning, **kwargs):
     exec(state.scriptInput, None, local_vars)
     success = False
     res = ''
-
-    if FIELD['model_copy'] is None and FIELD['model'] is not None:
-        FIELD['model_copy'] = FIELD['model'].copy()
 
     if 'f' in local_vars:
         try:
@@ -46,17 +42,6 @@ def run_script(scriptRunning, **kwargs):
     state.scriptOutput = str(res)
     state.scriptRunning = False
 
-@state.change("fieldRestoring")
-def restore_field(fieldRestoring, **kwargs):
-    "Restore initial field data."
-    _ = kwargs
-
-    if not fieldRestoring:
-        return
-
-    FIELD['model'] = FIELD['model_copy'].copy()
-    process_field(FIELD['model'])
-    state.fieldRestoring = False
 
 def render_script():
     "Script page layout."
@@ -75,11 +60,3 @@ def render_script():
     with vuetify.VCard(style="margin-top: 10px", variant='flat'):
         vuetify.VCardTitle("Ouptput:")
         vuetify.VCardText('{{scriptOutput}}')
-
-    with vuetify.VBtn('Restore field',
-        click='fieldRestoring = true',
-        loading=('fieldRestoring',)):
-        vuetify.VTooltip(
-            text='Discard all changes in the reservoir model',
-            activator="parent",
-            location="end")

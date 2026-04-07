@@ -137,8 +137,3 @@ def render_help():
         	style="text-wrap: auto",
         	classes='pt-1'
         	)
-        vuetify.VCardText("Click the button RESTORE FIELD to discard\
-        	all changes made by the script.",
-        	style="text-wrap: auto",
-        	classes='pt-1'
-        	)

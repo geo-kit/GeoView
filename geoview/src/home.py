@@ -4,6 +4,7 @@ from glob import glob
 from uuid import uuid4
 import asyncio
 import vtk
+import pandas as pd
 
 from vtkmodules.vtkRenderingCore import (
     vtkActor,
@@ -302,17 +303,18 @@ async def simulate_async():
 
         field = FIELD['model']
 
-        for k in field.states.attributes:
-            delattr(field.states, k)
-
-        field.states['PRESSURE'] = results['pressure']
+        field.states.pressure = results['pressure']
         for k, v in results['saturations'].items():
-            field.states[k] = v
+            setattr(field.states, k, v)
+
+        new_attrs = ['PRESSURE',] + list(results['saturations'].keys())
+        for k in field.states.attributes:
+            if k not in new_attrs:
+                delattr(field.states, k)
+
         field.states.to_spatial()
         
-        field.wells.update(results['welldata'])
-
-        field.states.dates = field.result_dates
+        field.wells.results = results['welldata']
 
         update_dynamics(field)
 
