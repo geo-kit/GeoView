@@ -56,7 +56,7 @@ Script writing:
 
 ## Performance
 
-Loading time and memory usage for benchmark models in the [benchmarks](https://github.com/deepfield-team/DeepField-app/benchmarks) directory measured on a PC with Intel Core Ultra 7, 3.9GHz, 64Gb CPU:
+Loading time and memory usage for benchmark models in the [benchmarks]([https://github.com/geo-kit/GeoView/benchmarks](https://github.com/geo-kit/GeoView/tree/main/benchmarks)) directory measured on a PC with Intel Core Ultra 7, 3.9GHz, 64Gb CPU:
 
 | Number of cells | Loading time | Memory usage |
 |-------|---------|---------|
@@ -66,9 +66,9 @@ Loading time and memory usage for benchmark models in the [benchmarks](https://g
 
 ## Installation as a package
 
-We recommend creating a new virtual environment with python 3.11 to install the project dependencies:
+We recommend creating a new virtual environment with python 3.13 to install the project dependencies:
 
-	conda create -n app python=3.11
+	conda create -n app python=3.13
 
 Activate the new environment:
 
@@ -76,11 +76,11 @@ Activate the new environment:
 
 To install the project dependencies, run in the terminal:
 
-    pip install "git+https://github.com/deepfield-team/DeepField-app.git"
+    pip install "git+https://github.com/geo-kit/geocode.git"
 
 After installation, run in the terminal:
 
-	deepfield-app
+	geoview
 
 This should open a new tab in your default browser to http://localhost:8080/ with the application's home page.
 
@@ -101,11 +101,11 @@ about them.
 
 Another option to run the application is to clone the entire repository:
 
-	git clone https://github.com/deepfield-team/DeepField-app.git
+	git clone https://github.com/geo-kit/geoview.git
 
-Addionally, you will need to clone the repository `DeepField` into the same directory as the `DeepField-app`:
+Addionally, you will need to clone the repository `GeoCode` into the same directory as the `GeoView`:
 
-	git clone https://github.com/deepfield-team/DeepField.git
+	git clone https://github.com/geo-kit/geocode.git
 
 Install dependencties in both repositories using
 
@@ -113,7 +113,7 @@ Install dependencties in both repositories using
 
 Then navigate to the directory DeepField-app and run in the terminal
 
-	python -m deepfield_app.app
+	python -m geoview.app
 
 to start the application.
 
@@ -129,19 +129,19 @@ Note that the functionality of the application is slightly different between loc
 
 ## Open-source reservoir models
 
-An example reservoir model with dynamics simulation can be found in the `open_data` directory in the `DeepField` repository [https://github.com/deepfield-team/DeepField](https://github.com/deepfield-team/DeepField),
+An example reservoir model with dynamics simulation can be found in the `open_data` directory in the `GeoCode` repository [https://github.com/geo-kig/GeoCode](https://github.com/geo-kit/GeoCode),
 as well as links to a number of other open source models.
 
 ## Script writing
 
 The application allows you to write and execute python scripts for
 reservoir model transformations and calculations. The script should 
-be based on the `DeepField` framework 
-[https://github.com/deepfield-team/DeepField](https://github.com/deepfield-team/DeepField).
-Read the [documentation](https://deepfield-team.github.io/DeepField/)
+be based on the `GeoCode` framework 
+[https://github.com/geo-kit/GeoCode](https://github.com/geo-kit/GeoCode).
+Read the [documentation](https://geo-kit.github.io/GeoCode/)
 and see
-[examples](https://github.com/deepfield-team/DeepField/blob/main/tutorials) 
-in the `DeepField` repository to prepare a script.
+[examples](https://github.com/geo-kit/GeoCode/blob/main/tutorials) 
+in the `GeoCode` repository to prepare a script.
 
 ## Next releases
 
@@ -152,12 +152,12 @@ Your suggestions and issues reports will help to make the application even bette
 
 We use
 * [trame](https://github.com/Kitware/trame) to build the web application
-* [DeepField](https://github.com/deepfield-team/DeepField) to read and process reservoir models
+* [GeoRead](https://github.com/geo-kit/GeoRead) to read and [GeoCode](https://github.com/geo-kit/GeoCode) to process reservoir models
 * [JutulDarcy](https://github.com/sintefmath/JutulDarcy.jl) for reservoir simulation
 
 ## Citing
 
 We hope that this project will help you in your research and you will decide to cite it as
 ```
-DeepField web application (2024). GitHub repository, https://github.com/deepfield-team/DeepField-app.
+GeoView web application (2026). GitHub repository, https://github.com/geo-kit/GeoView.
 ```
