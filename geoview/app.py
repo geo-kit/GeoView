@@ -98,7 +98,7 @@ with VAppLayout(server, theme=('theme',)) as layout:
                 render_script()
 
 
-if __name__ == "__main__":
+def server_start():
     manager = multiprocessing.Manager()
     jserver['queue'] = manager.Queue()
     jserver['results'] = manager.dict()
@@ -108,3 +108,7 @@ if __name__ == "__main__":
     process.start()
 
     server.start(timeout=100)
+
+
+if __name__ == "__main__":
+    server_start()
