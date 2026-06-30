@@ -1,26 +1,16 @@
 """JutulDarcy simulation pipeline.
 
 The worker process pulls (task_id, path) tasks from a queue, runs the Julia
-driver via execute_julia_models and loads its on-disk output through
+driver via execute_julia_simulate and loads its on-disk output through
 georead.jutul.load.
 """
-import hashlib
 import os
-import re
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 
 _SAT_NAME_TO_ATTR = {"SWAT": "swat", "SOIL": "soil", "SGAS": "sgas"}
-
-
-def _stable_runid(case_path):
-    "Build a runid from the .DATA file name and content hash."
-    digest = hashlib.sha256(case_path.read_bytes()).hexdigest()[:8]
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", case_path.stem)[:50]
-    return f"{stem}-{digest}"
 
 
 def _scatter_to_natural(arr, active_to_natural, n_natural):
@@ -63,47 +53,29 @@ def jutul_results_to_field(jr, output):
     output["dates"] = jr.dates
 
 
-def _simulate_subprocess(path, results, *, out_root, runid, restart, timeout_s):
+def _simulate_subprocess(path, results, *, timeout_s):
     "Run the Julia driver and load its on-disk output."
-    from geocode.field.utils.misc import execute_julia_models
+    from geocode.field.utils.misc import execute_julia_simulate
     from georead.jutul import load as jutul_load
 
-    case_dir = execute_julia_models(
-        runid=runid,
-        case_path=path,
-        out_root=out_root,
-        restart=restart,
-        timeout_s=timeout_s,
-    )
+    case_dir = execute_julia_simulate(path, timeout_s=timeout_s)
     jutul_results_to_field(jutul_load(case_dir), results)
+    results["result_dir"] = str(case_dir)
 
 
 def simulate(queue, results, timeout=1):
     """Simulation pipeline.
 
-    Environment toggles:
-        JUTUL_OUT_ROOT  -> output directory, defaults to <case_dir>/jutul_runs
-        JUTUL_RESTART   -> none|latest|step:N, default 'none' (always
-                           recompute); 'latest' reuses the JLD2 cache
+    Environment toggle:
         JUTUL_TIMEOUT_S -> per-run timeout in seconds, default unlimited
     """
     _ = timeout
     while True:
         task_id, path = queue.get()
         try:
-            case_path = Path(path)
-            out_root_env = os.environ.get("JUTUL_OUT_ROOT")
-            out_root = Path(out_root_env) if out_root_env else case_path.parent / "jutul_runs"
-            out_root.mkdir(parents=True, exist_ok=True)
-            restart = os.environ.get("JUTUL_RESTART", "none")
-            if restart.startswith("step:"):
-                restart = int(restart.split(":", 1)[1])
             timeout_env = os.environ.get("JUTUL_TIMEOUT_S")
             _simulate_subprocess(
                 path, results,
-                out_root=out_root,
-                runid=_stable_runid(case_path),
-                restart=restart,
                 timeout_s=int(timeout_env) if timeout_env else None,
             )
             results['status'] = None

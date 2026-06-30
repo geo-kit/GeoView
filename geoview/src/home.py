@@ -42,6 +42,7 @@ state.emptyHistory = True
 state.errMessage = ''
 state.loadFailed = False
 state.loadedModelPath = None
+state.simulationResultDir = None
 state.simulationFailed = False
 state.modelID = 0
 
@@ -147,6 +148,7 @@ async def load_file_async():
         state.showHistory = False
         state.showDirList = False
         state.simulationFailed = False
+        state.simulationResultDir = None
 
     field = Field(state.user_request)
 
@@ -295,6 +297,7 @@ async def simulate_async():
     "Simulate async."
     with state:
         state.simulating = True
+        state.simulationResultDir = None
 
     try:
         if state.loadedModelPath is None:
@@ -339,6 +342,7 @@ async def simulate_async():
 
     with state:
         state.modelID += 1
+        state.simulationResultDir = results["result_dir"]
         state.simulating = False
         state.simulationFailed = False
         state.errMessage = ''
