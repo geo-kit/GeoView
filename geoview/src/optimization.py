@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from trame.widgets import trame, html, plotly, vuetify3 as vuetify
 from trame.app import asynchronous
@@ -54,20 +55,28 @@ state.opt_improvement = 0.0
 state.opt_converged = True
 state.opt_n_variables = 0
 
-PLOTS = {"plot_opt": None}
+PLOTS = {"plot_opt": None, "opt_df": None}
 
-
-def _out_dir():
-    "Where the driver writes its output, mirroring the simulation pipeline."
-    case_path = Path(state.loadedModelPath)
-    out_root_env = os.environ.get("JUTUL_OUT_ROOT")
-    out_root = Path(out_root_env) if out_root_env else case_path.parent / "jutul_runs"
-    return out_root / f"{case_path.stem}_optimization"
+# Label -> production.csv column, for the per-well/field curve picker below the plot.
+OPT_SERIES = {
+    "Oil rate (base)": "base_oil_rate_m3_day",
+    "Oil rate (optimized)": "opt_oil_rate_m3_day",
+    "Water prod (base)": "base_water_rate_m3_day",
+    "Water prod (optimized)": "opt_water_rate_m3_day",
+    "Water inj (base)": "base_water_inj_m3_day",
+    "Water inj (optimized)": "opt_water_inj_m3_day",
+}
+state.opt_dataOptions = list(OPT_SERIES)
+state.opt_dataToShow = None
+state.opt_wellnames = ["Field"]
+state.opt_wellToShow = "Field"
+state.opt_exportPath = ""
+state.opt_secondAxis = False
 
 
 def _build_figure(df):
     "Base-vs-optimized field production rates."
-    fig = go.Figure()
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
     series = [
         ("base_oil_rate_m3_day", "Oil (base)", "#888", "solid"),
         ("opt_oil_rate_m3_day", "Oil (optimized)", "#1f9d3c", "solid"),
@@ -111,17 +120,14 @@ async def optimize_async():
         if not state.opt_form_complete:
             raise ValueError("Fill all optimization inputs before optimizing.")
 
-        out_dir = _out_dir()
         params = {
             "months": int(state.opt_months),
-            "granularity": "per-well",
             "oil-price": float(state.opt_oil_price),
             "gas-price": float(state.opt_gas_price),
-            # produced water is a cost -> negative price for npv_objective
-            "water-price": -abs(float(state.opt_water_price)),
+            "water-price": float(state.opt_water_price),
             "water-cost": float(state.opt_water_cost),
             "gas-cost": float(state.opt_gas_cost),
-            "discount-rate": float(state.opt_discount_rate) / 100.0,
+            "discount-rate": float(state.opt_discount_rate),
             "bhp-prod-min": float(state.opt_bhp_prod_min),
             "bhp-prod-max": float(state.opt_bhp_prod_max),
             "bhp-inj-min": float(state.opt_bhp_inj_min),
@@ -131,9 +137,9 @@ async def optimize_async():
         if result_dir:
             params["history-cache"] = str(Path(result_dir) / "jutul_state")
         timeout_env = os.environ.get("JUTUL_TIMEOUT_S")
-        await asyncio.to_thread(
+        out_dir = await asyncio.to_thread(
             execute_julia_optimize,
-            state.loadedModelPath, out_dir,
+            state.loadedModelPath,
             params=params,
             timeout_s=int(timeout_env) if timeout_env else None,
         )
@@ -156,6 +162,10 @@ async def optimize_async():
         state.opt_converged = summary["converged"]
         state.opt_n_variables = summary["n_variables"]
         PLOTS["plot_opt"] = fig
+        PLOTS["opt_df"] = df
+        wells = sorted(df["well"].unique()) if "well" in df else []
+        state.opt_wellnames = ["Field"] + wells
+        state.opt_wellToShow = "Field"
         ctrl.update_opt_plot(fig)
         state.optimizing = False
         state.optResultReady = True
@@ -177,6 +187,67 @@ def update_opt_plot(figure_size_opt, **kwargs):
         template=state.plotlyTheme,
     )
     ctrl.update_opt_plot(fig)
+
+
+def _select_curve(df, well, col):
+    "Per-well rows for `well`, or the field sum across wells when well == 'Field'."
+    if "well" in df and well != "Field":
+        return df[df["well"] == well]
+    if "well" in df:
+        return df.groupby(["period", "end_date"], as_index=False)[col].sum()
+    return df
+
+
+def add_opt_line():
+    "Overlay the selected well/field production curve onto the optimization plot."
+    fig, df = PLOTS["plot_opt"], PLOTS["opt_df"]
+    if fig is None or df is None or state.opt_dataToShow is None:
+        return
+    col = OPT_SERIES[state.opt_dataToShow]
+    if col not in df:
+        return
+    well = state.opt_wellToShow or "Field"
+    sub = _select_curve(df, well, col)
+    fig.add_trace(go.Scatter(
+        x=sub["end_date"], y=sub[col],
+        name=f"{well}/{state.opt_dataToShow}", line=dict(width=2)),
+        secondary_y=state.opt_secondAxis)
+    ctrl.update_opt_plot(fig)
+ctrl.add_opt_line = add_opt_line
+
+
+def clean_opt_plot():
+    "Remove every trace from the optimization plot."
+    if PLOTS["plot_opt"] is None:
+        return
+    PLOTS["plot_opt"].data = []
+    ctrl.update_opt_plot(PLOTS["plot_opt"])
+ctrl.clean_opt_plot = clean_opt_plot
+
+
+def remove_last_opt_line():
+    "Drop the most recently added trace."
+    fig = PLOTS["plot_opt"]
+    if fig is None or not fig.data:
+        return
+    fig.data = fig.data[:-1]
+    ctrl.update_opt_plot(fig)
+ctrl.remove_last_opt_line = remove_last_opt_line
+
+
+def export_opt_plot():
+    "Write the plotted curves to a CSV next to the loaded model."
+    fig = PLOTS["plot_opt"]
+    if fig is None or not fig.data or not state.loadedModelPath:
+        return
+    df = pd.concat(
+        [pd.Series(tr.y, index=tr.x, name=tr.name) for tr in fig.data],
+        axis=1)
+    df.index.name = "end_date"
+    out = Path(state.loadedModelPath).parent / "optimization_plot.csv"
+    df.to_csv(out)
+    state.opt_exportPath = str(out)
+ctrl.export_opt_plot = export_opt_plot
 
 
 def _num_field(model, label, suffix=""):
@@ -263,7 +334,59 @@ def render_optimization():
                     density="compact",
                     text=("'Failed: ' + opt_errMessage",))
 
-        with vuetify.VRow(style="width: 100%; height: 78vh", classes="pa-0 ma-0"):
+        with vuetify.VRow(style="width: 100%; height: 70vh", classes="pa-0 ma-0"):
             with vuetify.VCol(classes="pa-0"):
                 with trame.SizeObserver("figure_size_opt"):
                     ctrl.update_opt_plot = plotly.Figure(**CHART_STYLE).update
+
+        with vuetify.VRow(
+            classes="pa-0 ma-0",
+            style="flex-wrap: nowrap; align-items: center",
+        ):
+            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
+                vuetify.VSelect(
+                    v_model=("opt_wellToShow",),
+                    items=("opt_wellnames",),
+                    label="Select well",
+                    density="compact",
+                    hide_details=True,
+                    variant="outlined")
+            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
+                vuetify.VSelect(
+                    v_model=("opt_dataToShow",),
+                    items=("opt_dataOptions",),
+                    label="Select data",
+                    density="compact",
+                    hide_details=True,
+                    variant="outlined")
+            with vuetify.VCol(cols="auto", classes="pa-1"):
+                vuetify.VSwitch(
+                    v_model=("opt_secondAxis",),
+                    color="primary",
+                    label="Second Axis",
+                    hide_details=True)
+            with vuetify.VCol(cols="auto", classes="pa-1"):
+                vuetify.VBtn(
+                    "Add line",
+                    click=ctrl.add_opt_line,
+                    disabled=("!optResultReady",))
+            with vuetify.VCol(cols="auto", classes="pa-1"):
+                vuetify.VBtn(
+                    "Undo",
+                    click=ctrl.remove_last_opt_line,
+                    disabled=("!optResultReady",))
+            with vuetify.VCol(cols="auto", classes="pa-1"):
+                vuetify.VBtn(
+                    "Clean",
+                    click=ctrl.clean_opt_plot,
+                    disabled=("!optResultReady",))
+            with vuetify.VCol(cols="auto", classes="pa-1"):
+                with vuetify.VBtn(
+                    "Export",
+                    click=ctrl.export_opt_plot,
+                    color=("optResultReady ? '#51b03c' : ''",),
+                    disabled=("!optResultReady",)):
+                    vuetify.VTooltip(
+                        text="Export plot data to a csv next to the model",
+                        activator="parent",
+                        location="top")
