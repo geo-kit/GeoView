@@ -173,20 +173,35 @@ async def optimize_async():
 ctrl.optimize_async = optimize_async
 
 
-@state.change("figure_size_opt", "plotlyTheme")
+@state.change("figure_size_opt")
 def update_opt_plot(figure_size_opt, **kwargs):
-    "Resize/retheme the optimization plot."
+    "Resize the optimization plot."
     _ = kwargs
-    fig = PLOTS["plot_opt"]
-    if fig is None or figure_size_opt is None:
+    if figure_size_opt is None:
         return
     bounds = figure_size_opt.get("size", {})
-    fig.update_layout(
-        width=bounds.get("width", 300),
-        height=bounds.get("height", 100),
-        template=state.plotlyTheme,
-    )
-    ctrl.update_opt_plot(fig)
+    width = bounds.get("width", 300)
+    height = bounds.get("height", 100)
+    if PLOTS['plot_opt'] is None:
+        PLOTS['plot_opt'] = make_subplots(specs=[[{"secondary_y": True}]])
+        PLOTS['plot_opt'].update_layout(
+            showlegend=True,
+            margin={'t': 30, 'r': 10, 'l': 80, 'b': 30},
+            legend={'x': 1.01,},
+            template=state.plotlyTheme,
+            )
+    PLOTS['plot_opt'].update_layout(height=height, width=width)
+    ctrl.update_opt_plot(PLOTS['plot_opt'])
+
+
+@state.change("plotlyTheme")
+def change_plotly_theme_opt(plotlyTheme, **kwargs):
+    "Change plotly theme."
+    _ = kwargs
+    fig = PLOTS['plot_opt']
+    if fig is not None:
+        fig.layout.template = plotlyTheme
+        ctrl.update_opt_plot(fig)
 
 
 def _select_curve(df, well, col):
@@ -258,51 +273,52 @@ def _num_field(model, label, suffix=""):
         type="number",
         suffix=suffix,
         density="compact",
-        hide_details=True,
-        variant="outlined",
+        variant="underlined",
     )
 
 
 def render_optimization():
     "Optimization page layout."
     with vuetify.VContainer(fluid=True, classes="pa-2"):
-        with vuetify.VRow(
-            classes="pa-0 ma-0",
-            style="flex-wrap: nowrap; align-items: center",
-        ):
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_oil_price", "Oil price", "$/m3")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_gas_price", "Gas price", "$/m3")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_water_price", "Water handling", "$/m3")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_water_cost", "Water injection", "$/m3")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_gas_cost", "Gas injection", "$/m3")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_discount_rate", "Discount rate", "%/yr")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_months", "Forecast months")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_bhp_prod_min", "Prod BHP min", "bar")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_bhp_prod_max", "Prod BHP max", "bar")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_bhp_inj_min", "Inj BHP min", "bar")
-            with vuetify.VCol(classes="pa-1", style="min-width: 0"):
-                _num_field("opt_bhp_inj_max", "Inj BHP max", "bar")
-            with vuetify.VCol(cols="auto", classes="pa-1"):
-                with vuetify.VBtn(
-                    "Optimize",
-                    color=("(loading | simulating | optimizing | (modelID == 0) | !opt_form_complete) ? '' : '#51b03c'",),
-                    click=ctrl.optimize_async,
-                    disabled=("loading | loadFailed | simulating | optimizing | (modelID == 0) | !opt_form_complete",),
-                ):
-                    vuetify.VTooltip(
-                        text="Run forecast BHP optimization",
-                        activator="parent",
-                        location="top")
+        with vuetify.VRow(classes="pa-0 ma-0 justify-center"):
+            with vuetify.VBtn("Settings"):
+                with vuetify.VMenu(activator="parent", location='bottom', close_on_content_click=False):
+                    with vuetify.VContainer(classes="pa-0 ma-0"):
+                        with vuetify.VCard(classes="pa-0 ma-0", variant='flat'):
+                            with vuetify.VRow(classes="pa-0 ma-0"):
+                                with vuetify.VCol(classes="pa-0 ma-2"):
+                                        vuetify.VCardText('Production profit', classes="pl-0")
+                                        _num_field("opt_oil_price", "Oil price", "$/m3")
+                                        _num_field("opt_gas_price", "Gas price", "$/m3")
+                                with vuetify.VCol(classes="pa-0 ma-2"):
+                                    with vuetify.VCard(variant='flat'):
+                                        vuetify.VCardText('Production costs', classes="pl-0")
+                                        _num_field("opt_water_cost", "Water injection cost", "$/m3")
+                                        _num_field("opt_gas_cost", "Gas injection cost", "$/m3")
+                                        _num_field("opt_water_price", "Water production cost", "$/m3")
+                                with vuetify.VCol(classes="pa-0 ma-2"):
+                                    with vuetify.VCard(variant='flat'):
+                                        vuetify.VCardText('Time & discount', classes="pl-0")
+                                        _num_field("opt_discount_rate", "Discount rate", "%/yr")
+                                        _num_field("opt_months", "Forecast months")
+                                with vuetify.VCol(classes="pa-0 ma-2"):
+                                    with vuetify.VCard(variant='flat'):
+                                        vuetify.VCardText('BHP range', classes="pl-0")
+                                        _num_field("opt_bhp_prod_min", "Prod BHP min", "bar")
+                                        _num_field("opt_bhp_prod_max", "Prod BHP max", "bar")
+                                        _num_field("opt_bhp_inj_min", "Inj BHP min", "bar")
+                                        _num_field("opt_bhp_inj_max", "Inj BHP max", "bar")
+
+            with vuetify.VBtn(
+                "Optimize",
+                color=("(loading | simulating | optimizing | (modelID == 0) | !opt_form_complete) ? '' : '#51b03c'",),
+                click=ctrl.optimize_async,
+                disabled=("loading | loadFailed | simulating | optimizing | (modelID == 0) | !opt_form_complete",),
+            ):
+                vuetify.VTooltip(
+                    text="Run forecast BHP optimization",
+                    activator="parent",
+                    location="top")
         with vuetify.VRow(classes="pa-0 ma-0", style="align-items: center"):
             with vuetify.VCol(classes="pa-1 text-center"):
                 vuetify.VProgressCircular(
@@ -338,6 +354,7 @@ def render_optimization():
             with vuetify.VCol(classes="pa-0"):
                 with trame.SizeObserver("figure_size_opt"):
                     ctrl.update_opt_plot = plotly.Figure(**CHART_STYLE).update
+                    update_opt_plot(state.figure_size_opt)
 
         with vuetify.VRow(
             classes="pa-0 ma-0",
