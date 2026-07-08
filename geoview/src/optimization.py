@@ -48,6 +48,7 @@ def _validate_opt_form(**kwargs):
 state.optimizing = False
 state.optimizationFailed = False
 state.optResultReady = False
+state.initScreen = True
 state.opt_errMessage = ""
 state.opt_base_npv = 0.0
 state.opt_opt_npv = 0.0
@@ -109,6 +110,7 @@ def _build_figure(df):
 async def optimize_async():
     "Run the forecast BHP optimization driver and plot the result."
     with state:
+        state.initScreen = False
         state.optimizing = True
         state.optimizationFailed = False
         state.optResultReady = False
@@ -279,6 +281,9 @@ def _num_field(model, label, suffix=""):
 
 def render_optimization():
     "Optimization page layout."
+    text_classes = 'pa-0 ma-0'
+    text_style = ""
+
     with vuetify.VContainer(fluid=True, classes="pa-2"):
         with vuetify.VRow(classes="pa-0 ma-0 justify-center"):
             with vuetify.VBtn("Settings"):
@@ -309,56 +314,54 @@ def render_optimization():
                                         _num_field("opt_bhp_inj_min", "Inj BHP min", "bar")
                                         _num_field("opt_bhp_inj_max", "Inj BHP max", "bar")
 
-            with vuetify.VBtn(
+            vuetify.VBtn(
                 "Optimize",
                 color=("(loading | simulating | optimizing | (modelID == 0) | !opt_form_complete) ? '' : '#51b03c'",),
                 click=ctrl.optimize_async,
                 disabled=("loading | loadFailed | simulating | optimizing | (modelID == 0) | !opt_form_complete",),
-            ):
-                vuetify.VTooltip(
-                    text="Run forecast BHP optimization",
-                    activator="parent",
-                    location="top")
-        with vuetify.VRow(classes="pa-0 ma-0", style="align-items: center"):
+            )
+            with vuetify.VBtn("Report", style="margin-left: 24px"):
+                with vuetify.VMenu(activator="parent", location='bottom', close_on_content_click=False):
+                    with vuetify.VCard(classes='pa-2'):
+                        vuetify.VCardText("NPV without optimization {{ (opt_base_npv/1e6).toFixed(3) }} MM$", 
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("NPV with optimization {{ (opt_opt_npv/1e6).toFixed(3) }} MM$",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("NPV gain {{ ((opt_opt_npv-opt_base_npv)/1e6).toFixed(3) }} MM$",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("NPV relative change {{ opt_improvement.toFixed(1) }}%",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Number of variables: {{ opt_n_variables }}",
+                            classes=text_classes, style=text_style)
+
+        with vuetify.VRow(v_if="optimizing", style="width: 100%; height: 70vh; align-items: center"):
             with vuetify.VCol(classes="pa-1 text-center"):
                 vuetify.VProgressCircular(
-                    v_if="optimizing",
                     color="primary",
                     indeterminate=True,
-                    size="28",
-                    width="4")
-                with vuetify.VCard(
-                    v_if="optResultReady & !optimizing",
-                    variant="text",
-                    classes="pa-0",
-                ):
-                    vuetify.VCardText(
-                        "NPV without optimization {{ (opt_base_npv/1e6).toFixed(3) }} MM$  →  "
-                        "with optimization {{ (opt_opt_npv/1e6).toFixed(3) }} MM$   |   "
-                        "gain +{{ ((opt_opt_npv-opt_base_npv)/1e6).toFixed(3) }} MM$ "
-                        "({{ opt_improvement.toFixed(1) }}%), "
-                        "{{ opt_n_variables }} variables",
-                        classes="pa-0")
-                vuetify.VAlert(
-                    v_if="optResultReady & !opt_converged & !optimizing",
-                    type="warning",
-                    density="compact",
-                    text="Optimizer did not improve on continued historical controls.")
-                vuetify.VAlert(
-                    v_if="optimizationFailed",
-                    type="error",
-                    density="compact",
-                    text=("'Failed: ' + opt_errMessage",))
+                    size="60",
+                    width="7")
+                with vuetify.VCard(variant="text"):
+                    vuetify.VCardText("Optimizatation in progress, please wait", style=text_style)
+                
+        with vuetify.VRow(v_if="!optimizing & optResultReady  & (!opt_converged | optimizationFailed)",
+            style="width: 100%; height: 70vh; align-items: center"):
+                with vuetify.VCard(v_if="!opt_converged", variant='text'):
+                    vuetify.VIcon('mdi-close-thick', color="error", size='large')
+                    vuetify.VCardText('Optimizer failed to converge', style=text_style)
+                with vuetify.VCard(v_if="optimizationFailed", variant='text'):
+                    vuetify.VIcon('mdi-close-thick', color="error", size='large')
+                    vuetify.VCardText('Failed: ' + '{{opt_errMessage}}', style=text_style)
 
-        with vuetify.VRow(style="width: 100%; height: 70vh", classes="pa-0 ma-0"):
+        with vuetify.VRow(v_if="initScreen | (!optimizing & optResultReady)", style="width: 100%; height: 70vh", classes="pa-0 ma-0"):
             with vuetify.VCol(classes="pa-0"):
                 with trame.SizeObserver("figure_size_opt"):
                     ctrl.update_opt_plot = plotly.Figure(**CHART_STYLE).update
                     update_opt_plot(state.figure_size_opt)
 
         with vuetify.VRow(
-            classes="pa-0 ma-0",
-            style="flex-wrap: nowrap; align-items: center",
+            classes="pa-0 ma-0 position-fixed bottom-0",
+            style="width: 100%; flex-wrap: nowrap; align-items: center",
         ):
             with vuetify.VCol(classes="pa-1", style="min-width: 0"):
                 vuetify.VSelect(
