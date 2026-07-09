@@ -2,6 +2,7 @@
 import os
 import json
 import asyncio
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -16,23 +17,39 @@ from geocode.field.utils.misc import execute_julia_optimize
 from .config import state, ctrl
 from .view_1d import CHART_STYLE
 
-# Optimization inputs have no defaults: the user must fill every field before
-# the optimization can start.
+# Only max iterations defaults to Jutul's unit_box_bfgs default; the user must
+# fill the economic and BHP fields before optimization can start.
 OPT_FIELDS = ["opt_oil_price", "opt_gas_price", "opt_water_price",
               "opt_water_cost", "opt_gas_cost", "opt_discount_rate", "opt_months",
+              "opt_max_iterations",
               "opt_bhp_prod_min", "opt_bhp_prod_max",
               "opt_bhp_inj_min", "opt_bhp_inj_max"]
 for _f in OPT_FIELDS:
     setattr(state, _f, None)
+state.opt_max_iterations = 25
 state.opt_form_complete = False
 
 
 def _valid_opt_values(values):
-    "Whether all optimization inputs are filled and BHP bounds are ordered."
-    if any(value in (None, "") for value in values):
+    "Whether all optimization inputs are filled, positive where required, and ordered."
+    if len(values) != len(OPT_FIELDS) or any(value in (None, "") for value in values):
         return False
     try:
-        prod_min, prod_max, inj_min, inj_max = map(float, values[-4:])
+        data = dict(zip(OPT_FIELDS, values))
+        for field in (
+            "opt_discount_rate", "opt_bhp_prod_min", "opt_bhp_prod_max",
+            "opt_bhp_inj_min", "opt_bhp_inj_max",
+        ):
+            if float(data[field]) <= 0:
+                return False
+        for field in ("opt_months", "opt_max_iterations"):
+            value = float(data[field])
+            if value <= 0 or not value.is_integer():
+                return False
+        prod_min = float(data["opt_bhp_prod_min"])
+        prod_max = float(data["opt_bhp_prod_max"])
+        inj_min = float(data["opt_bhp_inj_min"])
+        inj_max = float(data["opt_bhp_inj_max"])
     except (TypeError, ValueError):
         return False
     return prod_min < prod_max and inj_min < inj_max
@@ -55,6 +72,12 @@ state.opt_opt_npv = 0.0
 state.opt_improvement = 0.0
 state.opt_converged = True
 state.opt_n_variables = 0
+state.opt_iterations = 0
+state.opt_report_max_iterations = 0
+state.opt_n_wells_producer = 0
+state.opt_n_wells_injector = 0
+state.opt_n_wells_shut = 0
+state.opt_wall_time_s = 0.0
 
 PLOTS = {"plot_opt": None, "opt_df": None}
 
@@ -62,6 +85,8 @@ PLOTS = {"plot_opt": None, "opt_df": None}
 OPT_SERIES = {
     "Oil rate (base)": "base_oil_rate_m3_day",
     "Oil rate (optimized)": "opt_oil_rate_m3_day",
+    "Gas rate (base)": "base_gas_rate_m3_day",
+    "Gas rate (optimized)": "opt_gas_rate_m3_day",
     "Water prod (base)": "base_water_rate_m3_day",
     "Water prod (optimized)": "opt_water_rate_m3_day",
     "Water inj (base)": "base_water_inj_m3_day",
@@ -72,29 +97,49 @@ state.opt_dataToShow = None
 state.opt_wellnames = ["Field"]
 state.opt_wellToShow = "Field"
 state.opt_exportPath = ""
+state.opt_result_message = ""
 state.opt_secondAxis = False
 
 
-def _build_figure(df):
-    "Base-vs-optimized field production rates."
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    series = [
-        ("base_oil_rate_m3_day", "Oil (base)", "#888", "solid"),
-        ("opt_oil_rate_m3_day", "Oil (optimized)", "#1f9d3c", "solid"),
-        ("base_water_rate_m3_day", "Water prod (base)", "#9ab", "dot"),
-        ("opt_water_rate_m3_day", "Water prod (optimized)", "#1f77b4", "dot"),
-        ("base_water_inj_m3_day", "Water inj (base)", "#d9a", "dash"),
-        ("opt_water_inj_m3_day", "Water inj (optimized)", "#d62728", "dash"),
+def _has_production(df, columns):
+    "Whether any listed production columns exist and contain non-zero values."
+    present = [column for column in columns if column in df]
+    return bool(present) and df[present].abs().sum().sum() > 0
+
+
+def _default_series(df):
+    "Initial plot series: oil if present, otherwise gas."
+    oil = [
+        ("base_oil_rate_m3_day", "Oil (base)", None, "solid"),
+        ("opt_oil_rate_m3_day", "Oil (optimized)", None, "solid"),
     ]
+    gas = [
+        ("base_gas_rate_m3_day", "Gas (base)", None, "solid"),
+        ("opt_gas_rate_m3_day", "Gas (optimized)", None, "solid"),
+    ]
+    if _has_production(df, [column for column, *_ in oil]):
+        return oil
+    if _has_production(df, [column for column, *_ in gas]):
+        return gas
+    return oil
+
+
+def _build_figure(df):
+    "Base-vs-optimized field production rates: oil first, gas fallback."
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    series = _default_series(df)
     if "well" in df:
         rate_columns = [column for column, *_ in series if column in df]
         df = df.groupby(["period", "end_date"], as_index=False)[rate_columns].sum()
     x = df["end_date"]
     for col, name, color, dash in series:
         if col in df:
+            line = {"width": 2, "dash": dash}
+            if color is not None:
+                line["color"] = color
             fig.add_trace(go.Scatter(
                 x=x, y=df[col], name=name,
-                line=dict(width=2, color=color, dash=dash)))
+                line=line))
     fig.update_layout(
         template=state.plotlyTheme,
         showlegend=True,
@@ -123,13 +168,14 @@ async def optimize_async():
             raise ValueError("Fill all optimization inputs before optimizing.")
 
         params = {
-            "months": int(state.opt_months),
+            "months": int(float(state.opt_months)),
             "oil-price": float(state.opt_oil_price),
             "gas-price": float(state.opt_gas_price),
             "water-price": float(state.opt_water_price),
             "water-cost": float(state.opt_water_cost),
             "gas-cost": float(state.opt_gas_cost),
             "discount-rate": float(state.opt_discount_rate),
+            "max-it": int(float(state.opt_max_iterations)),
             "bhp-prod-min": float(state.opt_bhp_prod_min),
             "bhp-prod-max": float(state.opt_bhp_prod_max),
             "bhp-inj-min": float(state.opt_bhp_inj_min),
@@ -139,12 +185,14 @@ async def optimize_async():
         if result_dir:
             params["history-cache"] = str(Path(result_dir) / "jutul_state")
         timeout_env = os.environ.get("JUTUL_TIMEOUT_S")
+        t0 = time.perf_counter()
         out_dir = await asyncio.to_thread(
             execute_julia_optimize,
             state.loadedModelPath,
             params=params,
             timeout_s=int(timeout_env) if timeout_env else None,
         )
+        wall_time = time.perf_counter() - t0
 
         summary = json.loads((out_dir / "summary.json").read_text())
         df = pd.read_csv(out_dir / "production.csv")
@@ -163,6 +211,15 @@ async def optimize_async():
         state.opt_improvement = summary["improvement_pct"]
         state.opt_converged = summary["converged"]
         state.opt_n_variables = summary["n_variables"]
+        state.opt_iterations = summary.get("iterations", 0)
+        state.opt_report_max_iterations = summary.get("max_it", int(float(state.opt_max_iterations)))
+        state.opt_n_wells_producer = summary.get("n_wells_producer", 0)
+        state.opt_n_wells_injector = summary.get("n_wells_injector", 0)
+        state.opt_n_wells_shut = summary.get("n_wells_shut", 0)
+        state.opt_wall_time_s = wall_time
+        state.opt_result_message = (
+            f"Done. Wrote production.csv, optimal_bhp.csv, summary.json to {out_dir}"
+        )
         PLOTS["plot_opt"] = fig
         PLOTS["opt_df"] = df
         wells = sorted(df["well"].unique()) if "well" in df else []
@@ -267,15 +324,18 @@ def export_opt_plot():
 ctrl.export_opt_plot = export_opt_plot
 
 
-def _num_field(model, label, suffix=""):
+def _num_field(model, label, suffix="", min_value=None, step=None):
     "A compact numeric input bound to a state variable."
     vuetify.VTextField(
         v_model=(model,),
         label=label,
         type="number",
         suffix=suffix,
+        min=min_value,
+        step=step,
         density="compact",
         variant="underlined",
+        style="min-width: 170px",
     )
 
 
@@ -288,31 +348,32 @@ def render_optimization():
         with vuetify.VRow(classes="pa-0 ma-0 justify-center"):
             with vuetify.VBtn("Settings"):
                 with vuetify.VMenu(activator="parent", location='bottom', close_on_content_click=False):
-                    with vuetify.VContainer(classes="pa-0 ma-0"):
+                    with vuetify.VContainer(classes="pa-0 ma-0", style="min-width: 820px"):
                         with vuetify.VCard(classes="pa-0 ma-0", variant='flat'):
                             with vuetify.VRow(classes="pa-0 ma-0"):
-                                with vuetify.VCol(classes="pa-0 ma-2"):
+                                with vuetify.VCol(classes="pa-0 ma-2", style="min-width: 170px"):
                                         vuetify.VCardText('Production profit', classes="pl-0")
                                         _num_field("opt_oil_price", "Oil price", "$/m3")
                                         _num_field("opt_gas_price", "Gas price", "$/m3")
-                                with vuetify.VCol(classes="pa-0 ma-2"):
+                                with vuetify.VCol(classes="pa-0 ma-2", style="min-width: 190px"):
                                     with vuetify.VCard(variant='flat'):
                                         vuetify.VCardText('Production costs', classes="pl-0")
                                         _num_field("opt_water_cost", "Water injection cost", "$/m3")
                                         _num_field("opt_gas_cost", "Gas injection cost", "$/m3")
                                         _num_field("opt_water_price", "Water production cost", "$/m3")
-                                with vuetify.VCol(classes="pa-0 ma-2"):
+                                with vuetify.VCol(classes="pa-0 ma-2", style="min-width: 170px"):
                                     with vuetify.VCard(variant='flat'):
                                         vuetify.VCardText('Time & discount', classes="pl-0")
-                                        _num_field("opt_discount_rate", "Discount rate", "%/yr")
-                                        _num_field("opt_months", "Forecast months")
-                                with vuetify.VCol(classes="pa-0 ma-2"):
+                                        _num_field("opt_discount_rate", "Discount rate", "%/yr", 0)
+                                        _num_field("opt_months", "Forecast months", min_value=1, step=1)
+                                        _num_field("opt_max_iterations", "Max iterations", min_value=1, step=1)
+                                with vuetify.VCol(classes="pa-0 ma-2", style="min-width: 170px"):
                                     with vuetify.VCard(variant='flat'):
                                         vuetify.VCardText('BHP range', classes="pl-0")
-                                        _num_field("opt_bhp_prod_min", "Prod BHP min", "bar")
-                                        _num_field("opt_bhp_prod_max", "Prod BHP max", "bar")
-                                        _num_field("opt_bhp_inj_min", "Inj BHP min", "bar")
-                                        _num_field("opt_bhp_inj_max", "Inj BHP max", "bar")
+                                        _num_field("opt_bhp_prod_min", "Prod BHP min", "bar", 0)
+                                        _num_field("opt_bhp_prod_max", "Prod BHP max", "bar", 0)
+                                        _num_field("opt_bhp_inj_min", "Inj BHP min", "bar", 0)
+                                        _num_field("opt_bhp_inj_max", "Inj BHP max", "bar", 0)
 
             vuetify.VBtn(
                 "Optimize",
@@ -333,6 +394,24 @@ def render_optimization():
                             classes=text_classes, style=text_style)
                         vuetify.VCardText("Number of variables: {{ opt_n_variables }}",
                             classes=text_classes, style=text_style)
+                        vuetify.VCardText("Iterations: {{ opt_iterations }} / {{ opt_report_max_iterations }}",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Wells: {{ opt_n_wells_producer }} producers, {{ opt_n_wells_injector }} injectors, {{ opt_n_wells_shut }} shut",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Optimization time: {{ opt_wall_time_s.toFixed(1) }} s",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Output: {{ opt_result_message }}",
+                            classes=text_classes,
+                            style="white-space: normal; overflow-wrap: anywhere; max-width: 900px")
+
+        with vuetify.VRow(v_if="optResultReady", classes="pa-0 ma-0 justify-center"):
+            vuetify.VAlert(
+                "{{ opt_result_message }}",
+                density="compact",
+                variant="tonal",
+                color="success",
+                classes="ma-1",
+                style="max-width: 1100px; white-space: normal; overflow-wrap: anywhere")
 
         with vuetify.VRow(v_if="optimizing", style="width: 100%; height: 70vh; align-items: center"):
             with vuetify.VCol(classes="pa-1 text-center"):

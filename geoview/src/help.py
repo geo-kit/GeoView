@@ -1,5 +1,5 @@
 "Help page."
-from trame.widgets import vuetify3 as vuetify
+from trame.widgets import html, vuetify3 as vuetify
 
 
 def render_help():
@@ -106,6 +106,56 @@ def render_help():
         	If the selected property is two-dimensional, select which\
         	value will be shown on the x-axis and set the second value using the slider.",
         	style="text-wrap: auto")
+
+    with vuetify.VCard(v_if="activeTab === 'opt'",
+        classes="pa-2",
+        style='max-width: 80vw;'):
+        vuetify.VCardTitle("Optimization")
+        vuetify.VCardText("This tab optimizes forecast well BHP controls to maximize discounted NPV.\
+            The optimized variables are producer and injector BHP values for each forecast month,\
+            bounded by the BHP ranges from Settings.",
+            style="text-wrap: auto")
+        vuetify.VCardText("The objective is the discounted sum of timestep cash flow:",
+            style="text-wrap: auto",
+            classes='pt-1')
+        with html.Div(
+            style="font-size: 1.05rem; padding: 8px 12px; margin: 4px 0; "
+                  "background: rgba(0,0,0,0.04); border-radius: 4px; "
+                  "font-family: Georgia, 'Times New Roman', serif; overflow-wrap: anywhere"):
+            html.Span("NPV = ")
+            html.Span("Σ", style="font-size: 1.4rem")
+            html.Sub("t")
+            html.Span(" [ p")
+            html.Sub("o")
+            html.Span("q")
+            html.Sub("o,t")
+            html.Span(" + p")
+            html.Sub("g")
+            html.Span("q")
+            html.Sub("g,t")
+            html.Span(" − c")
+            html.Sub("wp")
+            html.Span("q")
+            html.Sub("wp,t")
+            html.Span(" − c")
+            html.Sub("wi")
+            html.Span("q")
+            html.Sub("wi,t")
+            html.Span(" − c")
+            html.Sub("gi")
+            html.Span("q")
+            html.Sub("gi,t")
+            html.Span(" ] / (1 + r)")
+            html.Sup("Tₜ")
+        vuetify.VCardText("Here p is oil/gas price, c is water/gas handling cost, q is rate or volume contribution, r is annual discount rate, and T is time in years.",
+            style="text-wrap: auto",
+            classes='pt-1')
+        vuetify.VCardText("Enter prices and costs as positive $/m3 values.\
+            Discount rate is percent per year. Forecast months is the number of monthly\
+            control steps to optimize. Max iterations limits the L-BFGS optimizer work;\
+            larger values can improve the result but take longer.",
+            style="text-wrap: auto",
+            classes='pt-1')
 
     with vuetify.VCard(v_if="activeTab === 'info'",
         classes="pa-2 text-truncate",
