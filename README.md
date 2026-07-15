@@ -88,6 +88,7 @@ You can add a few optional parameters to the application start command:
 * --server - use to prevent a new tab from opening in the browser
 * --app - use to launch the application in a separate window rather than in the browser
 * --port 1234 - to change the default port 8080 to, e.g., 1234
+* --agent - start GeoAgent alongside the GeoView server
 
 When the application is running, you can click on the help icon in
 the upper right corner to read a brief description of the page. 

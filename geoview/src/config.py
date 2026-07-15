@@ -22,9 +22,15 @@ jserver = dict(queue=None, results=None)
 state.trame__title = "GeoView"
 
 server.cli.add_argument("-vr", "--vtk_remote", action="store_true", help="choosing vtk remote rendering")
+server.cli.add_argument(
+    "--agent",
+    action="store_true",
+    help="start GeoAgent alongside the GeoView server",
+)
 args = server.cli.parse_args()
 
 state.vtk_remote = True if args.vtk_remote else False
+agent_enabled = bool(args.agent)
 
 renderer = vtkRenderer()
 renderer.SetBackground(1, 1, 1)

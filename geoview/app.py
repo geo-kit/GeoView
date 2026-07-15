@@ -1,7 +1,11 @@
 "App layout."
-import sys
-import pandas as pd
 import multiprocessing
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+import pandas as pd
 from trame.widgets import html, client, vuetify3 as vuetify
 from trame.ui.vuetify3 import VAppLayout
 
@@ -13,7 +17,7 @@ except ModuleNotFoundError:
     except:
         raise ModuleNotFoundError("Module GeoCode is not found.")
 
-from .src.config import server, state, ctrl, renderer, jserver
+from .src.config import agent_enabled, server, state, ctrl, renderer, jserver
 from .src.home import render_home, make_empty_grid
 from .src.view_3d import render_3d
 from .src.view_2d import render_2d
@@ -28,6 +32,54 @@ state.theme = 'light'
 state.sideBarColor = "grey-lighten-4"
 state.plotlyTheme = 'plotly'
 state.bgColor = 'white'
+
+
+def _project_root():
+    """Return the directory containing the GeoView and GeoAgent projects."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _agent_python(agent_dir):
+    """Return the Python executable from GeoAgent's virtual environment."""
+    if os.name == "nt":
+        return agent_dir / ".venv" / "Scripts" / "python.exe"
+    return agent_dir / ".venv" / "bin" / "python"
+
+
+def _start_agent_process():
+    """Start GeoAgent in its own Python environment."""
+    agent_dir = _project_root() / "GeoAgent"
+    agent_script = agent_dir / "examples" / "agent.py"
+    python_executable = _agent_python(agent_dir)
+
+    for path, description in (
+        (agent_dir, "GeoAgent project directory"),
+        (python_executable, "GeoAgent Python executable"),
+        (agent_script, "GeoAgent entry point"),
+    ):
+        if not path.exists():
+            raise FileNotFoundError(f"{description} was not found: {path}")
+
+    process = subprocess.Popen(
+        [str(python_executable), str(agent_script)],
+        cwd=agent_dir,
+    )
+    print(f"GeoAgent started (PID {process.pid}).")
+    return process
+
+
+def _stop_agent_process(process):
+    """Stop a GeoAgent process started by this application."""
+    if process is None or process.poll() is not None:
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+    print("GeoAgent stopped.")
 
 
 def change_theme(*args, **kwargs):
@@ -107,4 +159,10 @@ if __name__ == "__main__":
     process.daemon = True
     process.start()
 
-    server.start(timeout=100)
+    agent_process = None
+    try:
+        if agent_enabled:
+            agent_process = _start_agent_process()
+        server.start(timeout=100)
+    finally:
+        _stop_agent_process(agent_process)
