@@ -12,20 +12,16 @@ def render_help():
         	The application supports reservoir models in the ECLIPSE file format.\
         	To load the model, input the path to the main reseroir model file with .DATA extension.\
         	You can use the up and down arrow keys and the enter key to autocomplete the path you type.\
-        	Click the LOAD button or press the enter key to start reading data. This may take a while.\
+        	Click the LOAD button or press the enter key to start reading data. \
+            This may take a while to read and process text and binary data files.\
         	Note that not all ECLIPSE keywords are supported.\
-        	Read more about supported keywords and file formats here: https://github.com/deepfield-team/DeepField.",
+        	Learn more about supported keywords at https://github.com/GeoKit/GeoCode.",
         	style="text-wrap: auto",
         	)
         vuetify.VCardText("Once the model is loaded, click on one of the tabs in the top panel\
-        	to begin exploring the model. Click on the help icon in the upper right corner\
-        	to read a brief description of the page. Hover over buttons and icons to see a tooltip\
-        	with textual information about them.",
-        	style="text-wrap: auto",
-        	classes='pt-1'
-        	)
-        vuetify.VCardText("Optionally, you can convert the model from .DATA format to .HDF5 format\
-        	to speed up the next time you read the data.",
+        	to begin exploring the model or click the SIMULATE button to execute the\
+            JutulDarcy porous media simulator \
+            (if the model does not include binary files with simulation results).",
         	style="text-wrap: auto",
         	classes='pt-1'
         	)
@@ -36,7 +32,7 @@ def render_help():
         vuetify.VCardTitle("3D view")
         vuetify.VCardText("This tab shows static and dynamic fields available in the\
         	reservoir model in 3D. Dynamic fields are available if the model is\
-        	simulated and contains the RESULTS folder.\
+        	simulated.\
             The color of a well indicates its status. \
             Green indicates an active producing well, \
             blue indicates an active injection well, \
@@ -67,7 +63,7 @@ def render_help():
         vuetify.VCardTitle("2D view")
         vuetify.VCardText("This tab shows 2D slices of static and dynamic fields available in the\
         	reservoir model. Dynamic field are available if the model is\
-        	simulated and contains the RESULTS folder.\
+        	simulated.\
         	Use the left toolbar to change the displayed data\
         	and control the appearance.",
         	style="text-wrap: auto")
@@ -76,17 +72,17 @@ def render_help():
         classes="pa-2 text-truncate",
         style='max-width: 80vw;'):
         vuetify.VCardTitle("Timeseries")
-        vuetify.VCardText("This tab allows you to plot and compare various dynamic (time-dependent)\
-        	properties of the simulated reservoir model attributed to grid cells or wells.\
+        vuetify.VCardText("This tab dislays simulated dynamic (time-dependent)\
+        	reservoir model properties attributed to grid cells or wells.\
         	Select one of the properties in the first dropdown list.\
         	If the selected property is attributed to grid cells (for example, PRESSURE),\
-        	you can specify the range of grid cells over which the property will be averaged.\
+        	the range of grid cells over which the property will be averaged can be specified.\
         	By default, the property is averaged over the entire reservoir model.\
         	Click ADD LINE button to add the line to the plot.\
-        	If the selected property is attributed to wells, you will need to specify well name.\
-        	If you want to compare two properties with different scales,\
-        	you can add a second axis to the plot using the toggle button.\
-        	You can add many lines to the plot and distribute them between axes.\
+        	If the selected property is attributed to wells, a well name should be specified.\
+        	To compare two properties with different scales,\
+        	add a second axis to the plot using the toggle button.\
+        	Any number of lines can be added to the plot and distributed between axes.\
         	To delete the last added line, click the UNDO button.\
         	Click the button CLEAN to remove all lines from the plot.",
         	style="text-wrap: auto")
@@ -112,12 +108,9 @@ def render_help():
         style='max-width: 80vw;'):
         vuetify.VCardTitle("Optimization")
         vuetify.VCardText("This tab optimizes forecast well BHP controls to maximize discounted NPV.\
-            The optimized variables are producer and injector BHP values for each forecast month,\
-            bounded by the BHP ranges from Settings.",
+            The optimized variables are producer and injector BHP values and \
+            the objective is the discounted sum of timestep cash flow:.",
             style="text-wrap: auto")
-        vuetify.VCardText("The objective is the discounted sum of timestep cash flow:",
-            style="text-wrap: auto",
-            classes='pt-1')
         with html.Div(
             style="font-size: 1.05rem; padding: 8px 12px; margin: 4px 0; "
                   "background: rgba(0,0,0,0.04); border-radius: 4px; "
@@ -150,10 +143,12 @@ def render_help():
         vuetify.VCardText("Here p is oil/gas price, c is water/gas handling cost, q is rate or volume contribution, r is annual discount rate, and T is time in years.",
             style="text-wrap: auto",
             classes='pt-1')
-        vuetify.VCardText("Enter prices and costs as positive $/m3 values.\
+        vuetify.VCardText("To start optimization, click the SETTINGS button and fill in all required fields. \
+            Enter prices and costs as positive $/m3 values.\
             Discount rate is percent per year. Forecast months is the number of monthly\
             control steps to optimize. Max iterations limits the L-BFGS optimizer work;\
-            larger values can improve the result but take longer.",
+            larger values can improve the result but take longer. Once all fields are filled in,\
+            click the OPTIMIZE button to start the process.",
             style="text-wrap: auto",
             classes='pt-1')
 
@@ -176,8 +171,8 @@ def render_help():
         	single agrument 'field'. When executed, the 'field' argument is\
         	substituted with the actual reservoir model.\
         	The script can contain reservoir model transformations or calculations.\
-        	See the documentation and examples in the DeepField repository\
-        	https://github.com/deepfield-team/DeepField \
+        	See the documentation and examples in the GeoCode repository\
+        	https://github.com/GeoKit/GeoCode \
         	to prepare the script.\
         	Click EXECUTE button to run the script.",
         	style="text-wrap: auto")

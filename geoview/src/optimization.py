@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 
 from trame.widgets import trame, html, plotly, vuetify3 as vuetify
 from trame.app import asynchronous
+from trame.decorators import trigger
 
 from geocode.field.utils.misc import execute_julia_optimize
 
@@ -78,6 +79,7 @@ state.opt_n_wells_producer = 0
 state.opt_n_wells_injector = 0
 state.opt_n_wells_shut = 0
 state.opt_wall_time_s = 0.0
+
 
 PLOTS = {"plot_opt": None, "opt_df": None}
 
@@ -218,7 +220,7 @@ async def optimize_async():
         state.opt_n_wells_shut = summary.get("n_wells_shut", 0)
         state.opt_wall_time_s = wall_time
         state.opt_result_message = (
-            f"Done. Wrote production.csv, optimal_bhp.csv, summary.json to {out_dir}"
+            f"Output files production.csv, optimal_bhp.csv, summary.json are saved in {out_dir}"
         )
         PLOTS["plot_opt"] = fig
         PLOTS["opt_df"] = df
@@ -287,6 +289,7 @@ def add_opt_line():
         name=f"{well}/{state.opt_dataToShow}", line=dict(width=2)),
         secondary_y=state.opt_secondAxis)
     ctrl.update_opt_plot(fig)
+
 ctrl.add_opt_line = add_opt_line
 
 
@@ -296,6 +299,7 @@ def clean_opt_plot():
         return
     PLOTS["plot_opt"].data = []
     ctrl.update_opt_plot(PLOTS["plot_opt"])
+
 ctrl.clean_opt_plot = clean_opt_plot
 
 
@@ -306,22 +310,8 @@ def remove_last_opt_line():
         return
     fig.data = fig.data[:-1]
     ctrl.update_opt_plot(fig)
+
 ctrl.remove_last_opt_line = remove_last_opt_line
-
-
-def export_opt_plot():
-    "Write the plotted curves to a CSV next to the loaded model."
-    fig = PLOTS["plot_opt"]
-    if fig is None or not fig.data or not state.loadedModelPath:
-        return
-    df = pd.concat(
-        [pd.Series(tr.y, index=tr.x, name=tr.name) for tr in fig.data],
-        axis=1)
-    df.index.name = "end_date"
-    out = Path(state.loadedModelPath).parent / "optimization_plot.csv"
-    df.to_csv(out)
-    state.opt_exportPath = str(out)
-ctrl.export_opt_plot = export_opt_plot
 
 
 def _num_field(model, label, suffix="", min_value=None, step=None):
@@ -339,6 +329,19 @@ def _num_field(model, label, suffix="", min_value=None, step=None):
     )
 
 
+@ctrl.trigger("export_opt_plot")
+def export_opt_plot():
+    "Generate CSV from the plot."
+    fig = PLOTS["plot_opt"]
+    if fig is None or not fig.data or not state.loadedModelPath:
+        return
+    df = pd.concat(
+        [pd.Series(tr.y, index=tr.x, name=tr.name) for tr in fig.data],
+        axis=1)
+    df.index.name = "Date"
+    return df.to_csv()
+
+
 def render_optimization():
     "Optimization page layout."
     text_classes = 'pa-0 ma-0'
@@ -347,6 +350,10 @@ def render_optimization():
     with vuetify.VContainer(fluid=True, classes="pa-2"):
         with vuetify.VRow(classes="pa-0 ma-0 justify-center"):
             with vuetify.VBtn("Settings"):
+                vuetify.VTooltip(
+                    text='Input optimization constraints',
+                    activator="parent",
+                    location="bottom")
                 with vuetify.VMenu(activator="parent", location='bottom', close_on_content_click=False):
                     with vuetify.VContainer(classes="pa-0 ma-0", style="min-width: 820px"):
                         with vuetify.VCard(classes="pa-0 ma-0", variant='flat'):
@@ -375,13 +382,21 @@ def render_optimization():
                                         _num_field("opt_bhp_inj_min", "Inj BHP min", "bar", 0)
                                         _num_field("opt_bhp_inj_max", "Inj BHP max", "bar", 0)
 
-            vuetify.VBtn(
+            with vuetify.VBtn(
                 "Optimize",
                 color=("(loading | simulating | optimizing | (modelID == 0) | !opt_form_complete) ? '' : '#51b03c'",),
                 click=ctrl.optimize_async,
                 disabled=("loading | loadFailed | simulating | optimizing | (modelID == 0) | !opt_form_complete",),
-            )
+            ):
+                vuetify.VTooltip(
+                        text='Start optimization',
+                        activator="parent",
+                        location="bottom")
             with vuetify.VBtn("Report", style="margin-left: 24px"):
+                vuetify.VTooltip(
+                        text='Optimization summary',
+                        activator="parent",
+                        location="bottom")
                 with vuetify.VMenu(activator="parent", location='bottom', close_on_content_click=False):
                     with vuetify.VCard(classes='pa-2'):
                         vuetify.VCardText("NPV without optimization {{ (opt_base_npv/1e6).toFixed(3) }} MM$", 
@@ -400,18 +415,9 @@ def render_optimization():
                             classes=text_classes, style=text_style)
                         vuetify.VCardText("Optimization time: {{ opt_wall_time_s.toFixed(1) }} s",
                             classes=text_classes, style=text_style)
-                        vuetify.VCardText("Output: {{ opt_result_message }}",
+                        vuetify.VCardText("{{ opt_result_message }}",
                             classes=text_classes,
                             style="white-space: normal; overflow-wrap: anywhere; max-width: 900px")
-
-        with vuetify.VRow(v_if="optResultReady", classes="pa-0 ma-0 justify-center"):
-            vuetify.VAlert(
-                "{{ opt_result_message }}",
-                density="compact",
-                variant="tonal",
-                color="success",
-                classes="ma-1",
-                style="max-width: 1100px; white-space: normal; overflow-wrap: anywhere")
 
         with vuetify.VRow(v_if="optimizing", style="width: 100%; height: 70vh; align-items: center"):
             with vuetify.VCol(classes="pa-1 text-center"):
@@ -465,27 +471,39 @@ def render_optimization():
                     label="Second Axis",
                     hide_details=True)
             with vuetify.VCol(cols="auto", classes="pa-1"):
-                vuetify.VBtn(
+                with vuetify.VBtn(
                     "Add line",
                     click=ctrl.add_opt_line,
-                    disabled=("!optResultReady",))
+                    disabled=("!optResultReady",)):
+                    vuetify.VTooltip(
+                        text='Add line to the plot',
+                        activator="parent",
+                        location="top")
             with vuetify.VCol(cols="auto", classes="pa-1"):
-                vuetify.VBtn(
+                with vuetify.VBtn(
                     "Undo",
                     click=ctrl.remove_last_opt_line,
-                    disabled=("!optResultReady",))
+                    disabled=("!optResultReady",)):
+                    vuetify.VTooltip(
+                        text='Delete last line from the plot',
+                        activator="parent",
+                        location="top")
             with vuetify.VCol(cols="auto", classes="pa-1"):
-                vuetify.VBtn(
+                with vuetify.VBtn(
                     "Clean",
                     click=ctrl.clean_opt_plot,
-                    disabled=("!optResultReady",))
+                    disabled=("!optResultReady",)):
+                    vuetify.VTooltip(
+                        text='Delete all lines from the plot',
+                        activator="parent",
+                        location="top")
             with vuetify.VCol(cols="auto", classes="pa-1"):
                 with vuetify.VBtn(
                     "Export",
-                    click=ctrl.export_opt_plot,
+                    click="utils.download('data.csv', trigger('export_opt_plot'), 'text/csv')",
                     color=("optResultReady ? '#51b03c' : ''",),
                     disabled=("!optResultReady",)):
                     vuetify.VTooltip(
-                        text="Export plot data to a csv next to the model",
+                        text="Export plot data to a CSV file",
                         activator="parent",
-                        location="top")
+                        location="left")
