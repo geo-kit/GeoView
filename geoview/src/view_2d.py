@@ -225,8 +225,7 @@ def update_slices(figure_size, activeSlice,
 
 def render_2d():
     "2D view layout."
-    with vuetify.VContainer(fluid=True,
-        classes="pa-0 ma-0"):
+    with vuetify.VContainer(fluid=True, classes="pa-0 ma-0"):
         with vuetify.VRow(style="width:100%; height: calc(100vh - 48px)",
             classes='pl-0 pr-0 pb-0 ma-0'):
             with vuetify.VCol(classes='pa-0 ma-0'):
@@ -309,7 +308,7 @@ def render_2d():
                     v_model=('activeStep',),
                     label="Timestep",
                     hide_details=True,
-                    style='width: 60vw'
+                    style='width: 50vw'
                     ):
                     with vuetify.Template(v_slot_append=True,
                         properties=[("v_slot_append", "v-slot:append")],):
