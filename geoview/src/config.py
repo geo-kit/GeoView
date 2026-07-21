@@ -27,6 +27,21 @@ server.cli.add_argument(
     action="store_true",
     help="start GeoAgent alongside the GeoView server",
 )
+server.cli.add_argument(
+    "--agent-provider",
+    choices=("lmstudio", "ollama", "gemini", "openai"),
+    help="model provider for GeoAgent (prompted when omitted interactively)",
+)
+server.cli.add_argument(
+    "--agent-model",
+    metavar="MODEL_ID",
+    help="provider model ID for GeoAgent",
+)
+server.cli.add_argument(
+    "--agent-base-url",
+    metavar="URL",
+    help="local or OpenAI-compatible endpoint override for GeoAgent",
+)
 args = server.cli.parse_args()
 
 state.vtk_remote = True if args.vtk_remote else False

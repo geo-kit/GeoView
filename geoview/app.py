@@ -17,7 +17,8 @@ except ModuleNotFoundError:
     except:
         raise ModuleNotFoundError("Module GeoCode is not found.")
 
-from .src.config import agent_enabled, server, state, ctrl, renderer, jserver
+from .src.agent_setup import configure_agent
+from .src.config import args, agent_enabled, server, state, ctrl, renderer, jserver
 from .src.home import render_home, make_empty_grid
 from .src.view_3d import render_3d
 from .src.view_2d import render_2d
@@ -46,7 +47,7 @@ def _agent_python(agent_dir):
     return agent_dir / ".venv" / "bin" / "python"
 
 
-def _start_agent_process():
+def _start_agent_process(model, environment):
     """Start GeoAgent in its own Python environment."""
     agent_dir = _project_root() / "GeoAgent"
     agent_script = agent_dir / "examples" / "agent.py"
@@ -60,9 +61,11 @@ def _start_agent_process():
         if not path.exists():
             raise FileNotFoundError(f"{description} was not found: {path}")
 
+    print(f"Starting GeoAgent with {model}...")
     process = subprocess.Popen(
-        [str(python_executable), str(agent_script)],
+        [str(python_executable), str(agent_script), "--model", model],
         cwd=agent_dir,
+        env=environment,
     )
     print(f"GeoAgent started (PID {process.pid}).")
     return process
@@ -151,6 +154,11 @@ with VAppLayout(server, theme=('theme',)) as layout:
 
 
 if __name__ == "__main__":
+    try:
+        agent_launch = configure_agent(args) if agent_enabled else None
+    except RuntimeError as error:
+        raise SystemExit(f"GeoAgent setup failed: {error}") from None
+
     manager = multiprocessing.Manager()
     jserver['queue'] = manager.Queue()
     jserver['results'] = manager.dict()
@@ -161,8 +169,9 @@ if __name__ == "__main__":
 
     agent_process = None
     try:
-        if agent_enabled:
-            agent_process = _start_agent_process()
+        if agent_launch:
+            agent_process = _start_agent_process(*agent_launch)
+            print("Starting GeoView...")
         server.start(timeout=100)
     finally:
         _stop_agent_process(agent_process)

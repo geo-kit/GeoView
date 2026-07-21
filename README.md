@@ -90,6 +90,38 @@ You can add a few optional parameters to the application start command:
 * --port 1234 - to change the default port 8080 to, e.g., 1234
 * --agent - start GeoAgent alongside the GeoView server
 
+### GeoAgent model selection
+
+With `--agent`, GeoView selects the provider and model before either process
+starts. The selector supports LM Studio, Ollama, Gemini, and OpenAI:
+
+```powershell
+python -m geoview.app --port 8080 --agent
+```
+
+For a non-interactive launch, provide both values explicitly:
+
+```powershell
+python -m geoview.app --agent `
+    --agent-provider ollama `
+    --agent-model qwen2.5:7b
+```
+
+Use `--agent-base-url` for a non-default local or OpenAI-compatible endpoint:
+
+```powershell
+python -m geoview.app --agent `
+    --agent-provider lmstudio `
+    --agent-base-url http://127.0.0.1:1234/v1 `
+    --agent-model some-model-id
+```
+
+The matching environment variables are `GEOVIEW_AGENT_PROVIDER`,
+`GEOVIEW_AGENT_MODEL`, and `GEOVIEW_AGENT_BASE_URL`. Cloud keys are read from
+`OPENAI_API_KEY` or `GOOGLE_API_KEY`/`GEMINI_API_KEY` and passed only to the
+GeoAgent child process. GeoView does not start local model servers or pull
+models.
+
 When the application is running, you can click on the help icon in
 the upper right corner to read a brief description of the page. 
 Hover over buttons and icons to see a tooltip with textual information
