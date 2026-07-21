@@ -293,8 +293,7 @@ def render_2d():
                     variant="outlined",
                     hide_details=True)
 
-    with html.Div(v_if='need_time_slider',
-        style='position: fixed; width: 100%; bottom: 0; padding-left: 10vw; padding-right: 10vw;'):
+    with html.Div(style='position: fixed; width: 80%; bottom: 0; left: 10%;'):
         with vuetify.VTextField(
               v_model=("stateDate",),
               label="Select a date",
@@ -322,6 +321,22 @@ def render_2d():
                             variant="outlined",
                             bg_color=('bgColor',),
                             hide_details=True)
+                with vuetify.VBtn(icon=True,
+                                  flat=True,
+                                  click=ctrl.startAnimation):
+                    vuetify.VIcon(children=["{{ anim_running ? 'mdi-stop' : 'mdi-play' }}"])
+                    vuetify.VTooltip(text='Start animation',
+                                     activator="parent",
+                                     location="top")
+                with vuetify.VBtn(icon=True,
+                                  flat=True,
+                                  click=ctrl.changeSpeed):
+                    vuetify.VIcon(
+                        children=["{{anim_speed == 0.5 ? 'mdi-speedometer-medium': anim_speed == 1 ? 'mdi-speedometer-slow' : 'mdi-speedometer'}}"]
+                    )
+                    vuetify.VTooltip(text='Change animation speed',
+                                     activator="parent",
+                                     location="top")
 
     with vuetify.VCard(
         color=('sideBarColor',),

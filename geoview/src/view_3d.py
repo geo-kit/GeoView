@@ -16,10 +16,7 @@ from .custom_classes import CustomInteractorStyle
 from .common import set_active_scalars
 
 
-VTK_VIEW_SETTINGS = {
-    # "interactive_ratio": 1,
-    # "interactive_quality": 90,
-}
+VTK_VIEW_SETTINGS = {}
 
 state.colormaps = sorted(["cividis", "inferno", "jet",
     "hot", "hsv", "magma", "plasma", "rainbow",
@@ -91,9 +88,6 @@ def update_field(activeField, **kwargs):
     activeStep = int(state.activeStep) if state.activeStep else 0
     if comp == 'states':
         state.stateDate = FIELD['dates'][activeStep].strftime('%Y-%m-%d')
-        state.need_time_slider = True
-    else:
-        state.need_time_slider = False
 
     mapper = FIELD[actor_names.main].GetMapper()
     mapper.SetScalarRange(FIELD['grid'].GetScalarRange())
@@ -416,20 +410,6 @@ def change_speed():
 
 ctrl.changeSpeed = change_speed
 
-@state.change("exportingData")
-def dump_results(exportingData, **kwargs):
-    "Export data."
-    _ = kwargs
-
-    if not exportingData:
-        return
-
-    field = FIELD['model']
-    title = field.meta.get('TITLE', 'Untitled')
-    dir_path = str(field._path.parent)
-    field._dump_binary_results(dir_path, mode='w', title=title)
-
-    state.exportingData = False
 
 def render_3d():
     "3D view layout."
@@ -451,7 +431,7 @@ def render_3d():
                 ctrl.view_reset_camera.add(view.reset_camera)
 
     with html.Div(
-        style='position: fixed; width: 100%; bottom: 0; padding-left: 10vw; padding-right: 10vw;'):
+        style='position: fixed; width: 80%; bottom: 0; left: 10%;'):
         with vuetify.VTextField(
               v_model=("stateDate",),
               label="Select a date",
@@ -467,7 +447,7 @@ def render_3d():
                     v_model=('activeStep',),
                     label="Timestep",
                     hide_details=True,
-                    style='width: 60vw'
+                    style='width: 50vw'
                     ):
                     with vuetify.Template(v_slot_append=True,
                         properties=[("v_slot_append", "v-slot:append")],):
@@ -792,14 +772,3 @@ def render_3d():
                             activator="parent",
                             location="end")
                         vuetify.VIcon("mdi-fit-to-page-outline")
-
-    with html.Div(style='position: fixed; bottom: 3px; right: 0;'):
-        with vuetify.VBtn("Export",
-            disabled=('max_timestep == 0',),
-            color=("max_timestep == 0 ? '' : '#51b03c'",),
-            click='exportingData = true',
-            loading=('exportingData',)):
-            vuetify.VTooltip(
-                text='Export simulated data',
-                activator="parent",
-                location="left")
