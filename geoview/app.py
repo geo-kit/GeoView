@@ -28,6 +28,7 @@ from .src.info import render_info
 from .src.script import render_script
 from .src.help import render_help
 from .src.simulation import simulate
+from .src.agent_chat import render_chat_fab, render_chat_panel, watch_agent_results
 
 state.theme = 'light'
 state.sideBarColor = "grey-lighten-4"
@@ -40,34 +41,80 @@ def _project_root():
     return Path(__file__).resolve().parents[2]
 
 
-def _agent_python(agent_dir):
-    """Return the Python executable from GeoAgent's virtual environment."""
+def _load_agent_env():
+    """Fill provider credentials from ``GeoAgent/.env`` so the picker need not ask.
+
+    Reads simple ``KEY=VALUE`` lines (``#`` comments and blanks ignored) and only
+    sets names not already present, so a value exported in the real environment
+    still wins. This is why the OpenAI/other API keys are picked up automatically
+    instead of prompting for them.
+    """
+    env_file = _project_root() / "GeoAgent" / ".env"
+    if not env_file.exists():
+        return
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def _agent_langgraph(agent_dir):
+    """Return the langgraph CLI executable from GeoAgent's virtual environment."""
     if os.name == "nt":
-        return agent_dir / ".venv" / "Scripts" / "python.exe"
-    return agent_dir / ".venv" / "bin" / "python"
+        return agent_dir / ".venv" / "Scripts" / "langgraph.exe"
+    return agent_dir / ".venv" / "bin" / "langgraph"
 
 
-def _start_agent_process(model, environment):
-    """Start GeoAgent in its own Python environment."""
+def _start_agent_process(qualified_model, environment):
+    """Start the GeoAgent LangGraph server so the in-app chat can reach it.
+
+    ``qualified_model`` is the ``provider:model`` string chosen in GeoView and
+    ``environment`` the provider credentials/URLs prepared by ``configure_agent``.
+    Both are handed to the child so the LangGraph server boots already using the
+    selected model (GeoAgent reads ``GEOAGENT_MODEL`` at import).
+    """
     agent_dir = _project_root() / "GeoAgent"
-    agent_script = agent_dir / "examples" / "agent.py"
-    python_executable = _agent_python(agent_dir)
+    langgraph_executable = _agent_langgraph(agent_dir)
 
     for path, description in (
         (agent_dir, "GeoAgent project directory"),
-        (python_executable, "GeoAgent Python executable"),
-        (agent_script, "GeoAgent entry point"),
+        (langgraph_executable, "GeoAgent langgraph executable"),
     ):
         if not path.exists():
             raise FileNotFoundError(f"{description} was not found: {path}")
 
-    print(f"Starting GeoAgent with {model}...")
+    # Force UTF-8 stdio so GeoAgent's rich console does not crash with
+    # UnicodeEncodeError on legacy Windows code pages (e.g. cp1251).
+    agent_env = {
+        **environment,
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "GEOAGENT_MODEL": qualified_model,
+    }
+
     process = subprocess.Popen(
-        [str(python_executable), str(agent_script), "--model", model],
+        [
+            str(langgraph_executable), "dev",
+            "--host", "127.0.0.1",
+            "--port", "2024",
+            "--no-browser",
+            "--no-reload",
+            # GeoAgent's tools (Julia simulation, file IO) make synchronous blocking
+            # calls; without this the dev server aborts runs with BlockingError.
+            "--allow-blocking",
+        ],
         cwd=agent_dir,
-        env=environment,
+        env=agent_env,
     )
-    print(f"GeoAgent started (PID {process.pid}).")
+    print(
+        f"GeoAgent LangGraph server started (PID {process.pid}) on "
+        f"http://127.0.0.1:2024 using {qualified_model}."
+    )
     return process
 
 
@@ -139,6 +186,8 @@ with VAppLayout(server, theme=('theme',)) as layout:
         with vuetify.VMain():
             with html.Div(v_if="activeTab === 'home'", classes="fill-height"):
                 render_home()
+                render_chat_fab()
+                render_chat_panel()
             with html.Div(v_if="activeTab === '3d'", classes="fill-height"):
                 render_3d()
             with html.Div(v_if="activeTab === '2d'", classes="fill-height"):
@@ -154,6 +203,11 @@ with VAppLayout(server, theme=('theme',)) as layout:
 
 
 if __name__ == "__main__":
+    # Select the GeoAgent provider/model *before* anything is launched, so the
+    # LangGraph server later comes up already using that choice. Pull provider
+    # credentials from GeoAgent/.env first so known API keys aren't prompted for.
+    if agent_enabled:
+        _load_agent_env()
     try:
         agent_launch = configure_agent(args) if agent_enabled else None
     except RuntimeError as error:
@@ -171,7 +225,7 @@ if __name__ == "__main__":
     try:
         if agent_launch:
             agent_process = _start_agent_process(*agent_launch)
-            print("Starting GeoView...")
+            ctrl.on_server_ready.add(lambda *a, **kw: watch_agent_results())
         server.start(timeout=100)
     finally:
         _stop_agent_process(agent_process)

@@ -153,14 +153,18 @@ def configure_agent(
             raise RuntimeError(
                 f"{spec['label']} requires {spec['key_env'][0]} in the environment."
             )
-        api_key = getpass.getpass(f"{spec['key_env'][0]}: ").strip()
+        api_key = getpass.getpass(
+            f"{spec['key_env'][0]} (input hidden — paste the key and press Enter): "
+        ).strip()
         if not api_key:
             raise RuntimeError("API key cannot be empty.")
 
     if not model:
         if not interactive:
             raise RuntimeError("Non-interactive launch requires --agent-model.")
-        entered_url = input_fn(f"{spec['label']} endpoint [{base_url}]: ").strip()
+        entered_url = input_fn(
+            f"{spec['label']} endpoint [{base_url}] (press Enter to accept default): "
+        ).strip()
         base_url = entered_url.rstrip("/") or base_url
         model = _select_model(
             _list_models(provider, base_url, api_key, opener), input_fn
