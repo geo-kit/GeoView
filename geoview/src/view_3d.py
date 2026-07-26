@@ -563,7 +563,7 @@ def render_3d():
                             close_on_content_click=False):
                             with vuetify.VContainer(style='width: 25vw'):
                                 with vuetify.VRow():
-                                    with vuetify.VCard(style='width: 7vw', variant='flat'):
+                                    with vuetify.VCard(style='width: 7vw; white-space: nowrap', variant='flat'):
                                         vuetify.VCardText('Field')
                                     vuetify.VRangeSlider(
                                         min=("field_slice_min",),
@@ -573,7 +573,7 @@ def render_3d():
                                         thumb_label='true',
                                         hide_details=True)
                                 with vuetify.VRow():
-                                    with vuetify.VCard(style='width: 7vw', variant='flat'):
+                                    with vuetify.VCard(style='width: 7vw; white-space: nowrap', variant='flat'):
                                         vuetify.VCardText('I slice')
                                     vuetify.VRangeSlider(
                                         min=1,
@@ -583,7 +583,7 @@ def render_3d():
                                         thumb_label='true',
                                         hide_details=True)
                                 with vuetify.VRow():
-                                    with vuetify.VCard(style='width: 7vw', variant='flat'):
+                                    with vuetify.VCard(style='width: 7vw; white-space: nowrap', variant='flat'):
                                         vuetify.VCardText('J slice')
                                     vuetify.VRangeSlider(
                                         min=1,
@@ -593,7 +593,7 @@ def render_3d():
                                         thumb_label='true',
                                         hide_details=True)
                                 with vuetify.VRow():
-                                    with vuetify.VCard(style='width: 7vw', variant='flat'):
+                                    with vuetify.VCard(style='width: 7vw; white-space: nowrap', variant='flat'):
                                         vuetify.VCardText('K slice')
                                     vuetify.VRangeSlider(
                                         min=1,
