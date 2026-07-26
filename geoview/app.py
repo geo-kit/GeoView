@@ -23,6 +23,7 @@ from .src.info import render_info
 from .src.script import render_script
 from .src.help import render_help
 from .src.simulation import simulate
+from .src.optimization import render_optimization
 
 state.theme = 'light'
 state.sideBarColor = "grey-lighten-4"
@@ -57,6 +58,7 @@ with VAppLayout(server, theme=('theme',)) as layout:
             vuetify.VSpacer()
             with vuetify.VTabs(v_model=('activeTab', 'home')):
                 vuetify.VTab('Home', value="home")
+                vuetify.VTab('Optimization', value="opt")
                 vuetify.VTab('3d view', value="3d")
                 vuetify.VTab('2d view', value="2d")
                 vuetify.VTab('Timeseries', value="ts")
@@ -96,9 +98,11 @@ with VAppLayout(server, theme=('theme',)) as layout:
                 render_info()
             with html.Div(v_if="activeTab === 'script'"):
                 render_script()
+            with html.Div(v_if="activeTab === 'opt'", classes="fill-height"):
+                render_optimization()
 
 
-if __name__ == "__main__":
+def server_start():
     manager = multiprocessing.Manager()
     jserver['queue'] = manager.Queue()
     jserver['results'] = manager.dict()
@@ -108,3 +112,7 @@ if __name__ == "__main__":
     process.start()
 
     server.start(timeout=100)
+
+
+if __name__ == "__main__":
+    server_start()

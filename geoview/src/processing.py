@@ -110,7 +110,7 @@ def get_simulation_dates(field):
     else:
         FIELD['dates'] = np.array(sorted(field.wells.RESULTS.DATE.unique()))
 
-    state.stateDate = FIELD['dates'][0].strftime('%Y-%m-%d')
+    state.startDate = FIELD['dates'][0].strftime('%Y-%m-%d')
     state.lastDate = FIELD['dates'][-1].strftime('%Y-%m-%d')
 
     state.max_timestep = len(FIELD['dates']) - 1

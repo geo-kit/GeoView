@@ -225,8 +225,7 @@ def update_slices(figure_size, activeSlice,
 
 def render_2d():
     "2D view layout."
-    with vuetify.VContainer(fluid=True,
-        classes="pa-0 ma-0"):
+    with vuetify.VContainer(fluid=True, classes="pa-0 ma-0"):
         with vuetify.VRow(style="width:100%; height: calc(100vh - 48px)",
             classes='pl-0 pr-0 pb-0 ma-0'):
             with vuetify.VCol(classes='pa-0 ma-0'):
@@ -247,12 +246,15 @@ def render_2d():
             ):
             with vuetify.Template(v_slot_append=True,
                 properties=[("v_slot_append", "v-slot:append")],):
-                vuetify.VTextField(
+                vuetify.VNumberInput(
                     v_model="xslice",
                     density="compact",
-                    style="width: 80px",
-                    type="number",
+                    style="width: 100px",
+                    control_variant="stacked",
+                    min=1,
+                    max=("dimens[0]",),
                     variant="outlined",
+                    bg_color=('bgColor',),
                     hide_details=True)
         with vuetify.VSlider(
             v_if="activeSlice === 'j'",
@@ -266,12 +268,15 @@ def render_2d():
             ):
             with vuetify.Template(v_slot_append=True,
                 properties=[("v_slot_append", "v-slot:append")],):
-                vuetify.VTextField(
+                vuetify.VNumberInput(
                     v_model="yslice",
                     density="compact",
-                    style="width: 80px",
-                    type="number",
+                    style="width: 100px",
+                    control_variant="stacked",
+                    min=1,
+                    max=("dimens[1]",),
                     variant="outlined",
+                    bg_color=('bgColor',),
                     hide_details=True)
         with vuetify.VSlider(
             v_if="activeSlice === 'k'",
@@ -285,16 +290,18 @@ def render_2d():
             ):
             with vuetify.Template(v_slot_append=True,
                 properties=[("v_slot_append", "v-slot:append")],):
-                vuetify.VTextField(
+                vuetify.VNumberInput(
                     v_model="zslice",
                     density="compact",
-                    style="width: 80px",
-                    type="number",
+                    style="width: 100px",
+                    control_variant="stacked",
+                    min=1,
+                    max=("dimens[2]",),
                     variant="outlined",
+                    bg_color=('bgColor',),
                     hide_details=True)
 
-    with html.Div(v_if='need_time_slider',
-        style='position: fixed; width: 100%; bottom: 0; padding-left: 10vw; padding-right: 10vw;'):
+    with html.Div(style='position: fixed; width: 80%; bottom: 0; left: 10%;'):
         with vuetify.VTextField(
               v_model=("stateDate",),
               label="Select a date",
@@ -310,18 +317,36 @@ def render_2d():
                     v_model=('activeStep',),
                     label="Timestep",
                     hide_details=True,
-                    style='width: 60vw'
+                    style='width: 50vw'
                     ):
                     with vuetify.Template(v_slot_append=True,
                         properties=[("v_slot_append", "v-slot:append")],):
-                        vuetify.VTextField(
+                        vuetify.VNumberInput(
                             v_model="activeStep",
                             density="compact",
-                            style="width: 80px",
-                            type="number",
+                            style="width: 100px",
+                            control_variant="stacked",
+                            min=0,
+                            max=("max_timestep",),
                             variant="outlined",
                             bg_color=('bgColor',),
                             hide_details=True)
+                with vuetify.VBtn(icon=True,
+                                  flat=True,
+                                  click=ctrl.startAnimation):
+                    vuetify.VIcon(children=["{{ anim_running ? 'mdi-stop' : 'mdi-play' }}"])
+                    vuetify.VTooltip(text='Start animation',
+                                     activator="parent",
+                                     location="top")
+                with vuetify.VBtn(icon=True,
+                                  flat=True,
+                                  click=ctrl.changeSpeed):
+                    vuetify.VIcon(
+                        children=["{{anim_speed == 0.5 ? 'mdi-speedometer-medium': anim_speed == 1 ? 'mdi-speedometer-slow' : 'mdi-speedometer'}}"]
+                    )
+                    vuetify.VTooltip(text='Change animation speed',
+                                     activator="parent",
+                                     location="top")
 
     with vuetify.VCard(
         color=('sideBarColor',),

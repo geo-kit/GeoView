@@ -95,7 +95,9 @@ Hover over buttons and icons to see a tooltip with textual information
 about them.
 
  > [!NOTE]
- > The installation of JutulDarcy simulator will be done automatically at the very first launch of the application. It may take some time.
+ > Reservoir simulation requires [Julia](https://julialang.org/downloads/). Install the JutulDarcy driver dependencies once:
+ >
+ >     julia --project="$(python -c "import geocode, pathlib; print(pathlib.Path(geocode.__file__).parent / 'bin')")" -e "using Pkg; Pkg.instantiate()"
 
 ## Installation from source code
 
@@ -118,7 +120,9 @@ Then navigate to the directory DeepField-app and run in the terminal
 to start the application.
 
  > [!NOTE]
- > The installation of JutulDarcy simulator will be done automatically at the very first launch of the application. It may take some time.
+ > Reservoir simulation requires [Julia](https://julialang.org/downloads/). Install the JutulDarcy driver dependencies once:
+ >
+ >     julia --project=../GeoCode/geocode/bin -e "using Pkg; Pkg.instantiate()"
 
 
 ## Rendering options

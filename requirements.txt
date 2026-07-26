@@ -6,5 +6,4 @@ trame-plotly
 plotly
 pywebview>=3.4
 trame-vtklocal
-jutuldarcy
 --extra-index-url https://wheels.vtk.org vtk==9.4.0rc2 

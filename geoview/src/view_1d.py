@@ -6,14 +6,13 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 from trame.widgets import trame, html, plotly, vuetify3 as vuetify
+from trame.decorators import trigger
 
 from .config import state, ctrl, FIELD
 
-state.plot_content = ""
 
 PLOTS = {"plot_ts": None,
-         "plot_pvt": None,
-         "df": pd.DataFrame()}
+         "plot_pvt": None}
 
 CHART_STYLE = {
     "mode_bar_buttons_to_remove": (
@@ -135,17 +134,6 @@ def add_line_to_plot():
     ), secondary_y=state.secondAxis)
 
     fig.update_xaxes(title_text="Date")
-
-    dates = pd.to_datetime(dates)
-    if PLOTS['df'].empty:
-        PLOTS['df'] = pd.DataFrame({name: data}, index=dates)
-        PLOTS['df'].index.rename('DATE', inplace=True)
-    else:
-        try:
-            PLOTS['df'].loc[dates, name] = data
-        except Exception as err:
-            PLOTS['df'][name] = None
-    state.plot_content = PLOTS['df'].to_csv()
     ctrl.update_ts_plot(fig)
 
 ctrl.add_line_to_plot = add_line_to_plot
@@ -155,7 +143,6 @@ def clean_ts_plot():
     if PLOTS['plot_ts'] is None:
         return
     PLOTS['plot_ts'].data = []
-    PLOTS['df'] = pd.DataFrame()
     ctrl.update_ts_plot(PLOTS['plot_ts'])
 
 ctrl.clean_ts_plot = clean_ts_plot
@@ -165,7 +152,6 @@ def remove_last_line():
     if not PLOTS['plot_ts'].data:
         return
     PLOTS['plot_ts'].data = PLOTS['plot_ts'].data[:-1]
-    PLOTS['df'] = PLOTS['df'].drop(labels=PLOTS['df'].columns[-1], axis=1) 
     ctrl.update_ts_plot(PLOTS['plot_ts'])
 
 ctrl.remove_last_line = remove_last_line
@@ -304,6 +290,19 @@ def clean_pvt_plot():
     PLOTS['plot_pvt'].data = []
     ctrl.update_pvt_plot(PLOTS['plot_pvt'])
 
+@ctrl.trigger("export_ts_plot")
+def export_ts_plot(**kwargs):
+    "Generate CSV from the plot."
+    fig = PLOTS["plot_ts"]
+    if fig is None or not fig.data:
+        return
+    df = pd.concat(
+        [pd.Series(tr.y, index=tr.x, name=tr.name) for tr in fig.data],
+        axis=1)
+    df.index.name = "Date"
+    return df.to_csv()
+
+
 def render_ts():
     "Timeseries page layout."
     with vuetify.VContainer(fluid=True, style='align-items: top', classes="pa-0 ma-0"):
@@ -369,7 +368,7 @@ def render_ts():
                     click=ctrl.clean_ts_plot,
                     classes='mt-2'):
                     vuetify.VTooltip(
-                        text='Delete lines from the plot',
+                        text='Delete all lines from the plot',
                         activator="parent",
                         location="bottom")
 
@@ -381,14 +380,13 @@ def render_ts():
 
     with html.Div(style='position: fixed; bottom: 3px; right: 0;'):
         with vuetify.VBtn("Export",
-            click="utils.download('data.csv', plot_content, 'text/csv')",
+            click="utils.download('data.csv', trigger('export_ts_plot'), 'text/csv')",
             color=("max_timestep == 0 ? '' : '#51b03c'",),
             disabled=('max_timestep == 0',)):
             vuetify.VTooltip(
-                text='Export plot data to csv',
+                text='Export plot data to a CSV file',
                 activator="parent",
                 location="left")
-
 
 def render_pvt():
     "PVT page layout."
