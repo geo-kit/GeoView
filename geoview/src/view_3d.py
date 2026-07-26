@@ -561,39 +561,47 @@ def render_3d():
                         with vuetify.VMenu(activator="parent",
                             location="right center",
                             close_on_content_click=False):
-                            with html.Div(style='width: 25vw'):
-                                vuetify.VRangeSlider(
-                                    min=("field_slice_min",),
-                                    max=("field_slice_max",),
-                                    step=("field_slice_step",),
-                                    label="Field",
-                                    v_model=("field_slice",),
-                                    thumb_label='true',
-                                    hide_details=True)
-                                vuetify.VRangeSlider(
-                                    min=1,
-                                    max=("dimens[0]",),
-                                    step=1,
-                                    v_model=("i_slice",),
-                                    label='I slice',
-                                    thumb_label='true',
-                                    hide_details=True)
-                                vuetify.VRangeSlider(
-                                    min=1,
-                                    max=("dimens[1]",),
-                                    step=1,
-                                    v_model=("j_slice",),
-                                    label="J slice",
-                                    thumb_label='true',
-                                    hide_details=True)
-                                vuetify.VRangeSlider(
-                                    min=1,
-                                    max=("dimens[2]",),
-                                    step=1,
-                                    v_model=("k_slice",),
-                                    label="K slice",
-                                    thumb_label='hide',
-                                    hide_details=True)
+                            with vuetify.VContainer(style='width: 25vw'):
+                                with vuetify.VRow():
+                                    with vuetify.VCard(style='width: 7vw', variant='flat'):
+                                        vuetify.VCardText('Field')
+                                    vuetify.VRangeSlider(
+                                        min=("field_slice_min",),
+                                        max=("field_slice_max",),
+                                        step=("field_slice_step",),
+                                        v_model=("field_slice",),
+                                        thumb_label='true',
+                                        hide_details=True)
+                                with vuetify.VRow():
+                                    with vuetify.VCard(style='width: 7vw', variant='flat'):
+                                        vuetify.VCardText('I slice')
+                                    vuetify.VRangeSlider(
+                                        min=1,
+                                        max=("dimens[0]",),
+                                        step=1,
+                                        v_model=("i_slice",),
+                                        thumb_label='true',
+                                        hide_details=True)
+                                with vuetify.VRow():
+                                    with vuetify.VCard(style='width: 7vw', variant='flat'):
+                                        vuetify.VCardText('J slice')
+                                    vuetify.VRangeSlider(
+                                        min=1,
+                                        max=("dimens[1]",),
+                                        step=1,
+                                        v_model=("j_slice",),
+                                        thumb_label='true',
+                                        hide_details=True)
+                                with vuetify.VRow():
+                                    with vuetify.VCard(style='width: 7vw', variant='flat'):
+                                        vuetify.VCardText('K slice')
+                                    vuetify.VRangeSlider(
+                                        min=1,
+                                        max=("dimens[2]",),
+                                        step=1,
+                                        v_model=("k_slice",),
+                                        thumb_label='hide',
+                                        hide_details=True)
                                 vuetify.VCheckbox(label='Show only well blokcs',
                                     v_model=('show_well_blocks', False),
                                     hide_details=True,
