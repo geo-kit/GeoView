@@ -246,12 +246,15 @@ def render_2d():
             ):
             with vuetify.Template(v_slot_append=True,
                 properties=[("v_slot_append", "v-slot:append")],):
-                vuetify.VTextField(
+                vuetify.VNumberInput(
                     v_model="xslice",
                     density="compact",
-                    style="width: 80px",
-                    type="number",
+                    style="width: 100px",
+                    control_variant="stacked",
+                    min=1,
+                    max=("dimens[0]",),
                     variant="outlined",
+                    bg_color=('bgColor',),
                     hide_details=True)
         with vuetify.VSlider(
             v_if="activeSlice === 'j'",
@@ -265,12 +268,15 @@ def render_2d():
             ):
             with vuetify.Template(v_slot_append=True,
                 properties=[("v_slot_append", "v-slot:append")],):
-                vuetify.VTextField(
+                vuetify.VNumberInput(
                     v_model="yslice",
                     density="compact",
-                    style="width: 80px",
-                    type="number",
+                    style="width: 100px",
+                    control_variant="stacked",
+                    min=1,
+                    max=("dimens[1]",),
                     variant="outlined",
+                    bg_color=('bgColor',),
                     hide_details=True)
         with vuetify.VSlider(
             v_if="activeSlice === 'k'",
@@ -284,12 +290,15 @@ def render_2d():
             ):
             with vuetify.Template(v_slot_append=True,
                 properties=[("v_slot_append", "v-slot:append")],):
-                vuetify.VTextField(
+                vuetify.VNumberInput(
                     v_model="zslice",
                     density="compact",
-                    style="width: 80px",
-                    type="number",
+                    style="width: 100px",
+                    control_variant="stacked",
+                    min=1,
+                    max=("dimens[2]",),
                     variant="outlined",
+                    bg_color=('bgColor',),
                     hide_details=True)
 
     with html.Div(style='position: fixed; width: 80%; bottom: 0; left: 10%;'):
@@ -312,11 +321,13 @@ def render_2d():
                     ):
                     with vuetify.Template(v_slot_append=True,
                         properties=[("v_slot_append", "v-slot:append")],):
-                        vuetify.VTextField(
+                        vuetify.VNumberInput(
                             v_model="activeStep",
                             density="compact",
-                            style="width: 80px",
-                            type="number",
+                            style="width: 100px",
+                            control_variant="stacked",
+                            min=0,
+                            max=("max_timestep",),
                             variant="outlined",
                             bg_color=('bgColor',),
                             hide_details=True)
