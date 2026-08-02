@@ -15,7 +15,11 @@ from pathlib import Path
 from trame.widgets import html, vuetify3 as vuetify
 from trame.app import asynchronous
 
-from langgraph_sdk import get_client
+try:
+    from langgraph_sdk import get_client
+except ModuleNotFoundError:
+    # Only the chat needs it; a plain GeoView launch must still start without it.
+    get_client = None
 
 from .config import state, ctrl, FIELD, agent_enabled
 
@@ -90,6 +94,15 @@ async def chat_send(**kwargs):
     _ = kwargs
     text = (state.chat_input or "").strip()
     if not text or state.chat_busy:
+        return
+
+    if get_client is None:
+        with state:
+            _append_message(
+                "system",
+                "⚠ Чат недоступен: не установлен пакет langgraph-sdk "
+                "(pip install langgraph-sdk).",
+            )
         return
 
     with state:

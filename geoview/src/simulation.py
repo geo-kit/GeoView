@@ -20,11 +20,18 @@ def results2field(case, res, output):
     "Convert from JutulDarcy to Field data."
     jl = importlib.import_module('juliacall').Main
     
+    sat_map = {'JutulDarcy.AqueousPhase()': 'SWAT',
+               'JutulDarcy.LiquidPhase()': 'SOIL',
+               'JutulDarcy.VaporPhase()': 'SGAS'}
+
+    sat_names = [sat_map[str(k)] for k in case.model.models.Reservoir.system.phases]
+
     state0_pressure = np.array(
         jl.seval("state0 -> state0[:Reservoir][:Pressure]")(case.state0)).reshape(1, -1)
 
     state0_sats = np.array(
-        jl.seval("state0 -> state0[:Reservoir][:Saturations]")(case.state0)).reshape(1, 2, -1)
+        jl.seval("state0 -> state0[:Reservoir][:Saturations]")(case.state0)
+        ).reshape(1, len(sat_names), -1)
 
     n_steps = len(res['STATES'])
     jd_pressure = np.array([res['STATES'][i]['Pressure'] for i in range(n_steps)])
@@ -33,11 +40,6 @@ def results2field(case, res, output):
     jd_pressure = np.vstack([state0_pressure, jd_pressure])
     jd_sats = np.vstack([state0_sats, jd_sats])
 
-    sat_map = {'JutulDarcy.AqueousPhase()': 'SWAT',
-               'JutulDarcy.LiquidPhase()': 'SOIL',
-               'JutulDarcy.VaporPhase()': 'SGAS'}
-
-    sat_names = [sat_map[str(k)] for k in case.model.models.Reservoir.system.phases]
     output['saturations'] = dict(zip(sat_names, np.moveaxis(jd_sats, 1, 0)))
 
     output['pressure'] = jd_pressure
