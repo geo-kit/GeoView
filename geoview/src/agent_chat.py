@@ -38,8 +38,80 @@ state.chat_input = ""
 state.chat_busy = False
 state.agent_result_dir = str(AGENT_RESULT_DIR)
 
+# Pending tool approval (a LangGraph interrupt), or None. Rendered as a card in
+# the panel; the run stays paused server-side until it is answered.
+state.pending_approval = None
+
 # LangGraph conversation thread (kept across messages for dialogue context).
 _thread_id = None
+
+
+# ── Tool approvals (LangGraph interrupts) ─────────────────────────────────
+#
+# GeoAgent pauses the graph with ``interrupt([HumanInterrupt])`` before anything
+# irreversible: a shell command, Julia code, overwriting a file. The pause lives
+# in the checkpointed thread, so closing the panel does not cancel or approve it
+# — only an explicit answer resumes the run.
+#
+# The audience here is reservoir engineers, not developers, so the card leads
+# with a plain sentence and shows the raw argument underneath.
+
+# arg key -> (plain-language headline, field label, render as a code block)
+_APPROVAL_ARGS = {
+    "Command": ("GeoAgent хочет выполнить команду в терминале", "Команда", True),
+    "Code": ("GeoAgent хочет выполнить Julia-код", "Код", True),
+    "Filepath": ("GeoAgent хочет перезаписать файл", "Файл", False),
+    "Query": ("GeoAgent уточняет поисковый запрос", "Запрос", False),
+}
+
+
+def _extract_interrupt(part):
+    """Return the HumanInterrupt dict of an ``__interrupt__`` event, else None."""
+    data = getattr(part, "data", None)
+    if not isinstance(data, dict):
+        return None
+    items = data.get("__interrupt__")
+    if not items:
+        return None
+    first = items[0] if isinstance(items, (list, tuple)) else items
+    value = first.get("value") if isinstance(first, dict) else None
+    # GeoAgent calls interrupt([request]), so the value is a one-item list.
+    if isinstance(value, (list, tuple)) and value:
+        value = value[0]
+    return value if isinstance(value, dict) else None
+
+
+def _build_approval(request):
+    """Turn a HumanInterrupt into the card model the panel renders."""
+    action_request = request.get("action_request") or {}
+    raw_args = action_request.get("args") or {}
+    config = request.get("config") or {}
+
+    headline = "GeoAgent просит подтверждение"
+    fields = []
+    for key, value in raw_args.items():
+        summary, label, code_block = _APPROVAL_ARGS.get(key, (None, key, False))
+        if summary and len(fields) == 0:
+            headline = summary
+        fields.append(
+            {"key": key, "label": label, "value": str(value), "code": code_block}
+        )
+
+    # A single scalar argument can be corrected in the text box. Anything with
+    # more fields would need a form we deliberately do not build into a 420px
+    # panel; there the user rejects and says what to change instead.
+    allow_edit = bool(config.get("allow_edit")) and len(fields) == 1
+    return {
+        "headline": headline,
+        "action": action_request.get("action", ""),
+        "fields": fields,
+        "allow_accept": bool(config.get("allow_accept", True)),
+        "allow_ignore": bool(config.get("allow_ignore", True)),
+        "allow_respond": bool(config.get("allow_respond")),
+        "allow_edit": allow_edit,
+        "edit_key": fields[0]["key"] if allow_edit else None,
+        "edit_value": fields[0]["value"] if allow_edit else "",
+    }
 
 
 # ── Talking to the agent ──────────────────────────────────────────────────
@@ -87,6 +159,68 @@ def _append_message(role, text):
     state.chat_messages = state.chat_messages + [{"role": role, "text": text}]
 
 
+async def _consume(client, **stream_kwargs):
+    """Stream one run to the panel; stop early if the graph asks for approval.
+
+    Shared by a fresh message and by resuming an approved one, so both render
+    identically. Returns nothing: everything lands in trame state.
+    """
+    assistant_text = ""
+    assistant_idx = None
+    announced_sim = False
+
+    async for part in client.runs.stream(
+        _thread_id,
+        AGENT_ASSISTANT_ID,
+        stream_mode=["messages-tuple", "updates"],
+        **stream_kwargs,
+    ):
+        request = _extract_interrupt(part)
+        if request is not None:
+            with state:
+                state.pending_approval = _build_approval(request)
+                _append_message("system", "⏸ Требуется ваше подтверждение.")
+            return
+
+        if not announced_sim and _mentions_simulation_tool(part):
+            announced_sim = True
+            assistant_text = ""
+            assistant_idx = None
+            with state:
+                _append_message(
+                    "system",
+                    "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять "
+                    "несколько минут…",
+                )
+            continue
+
+        delta = _extract_ai_text(part)
+        if not delta:
+            continue
+        assistant_text += delta
+        with state:
+            if assistant_idx is None:
+                _append_message("assistant", assistant_text)
+                assistant_idx = len(state.chat_messages) - 1
+            else:
+                msgs = list(state.chat_messages)
+                msgs[assistant_idx] = {"role": "assistant", "text": assistant_text}
+                state.chat_messages = msgs
+
+
+def _agent_unavailable():
+    "Report the missing SDK once, in the chat, instead of raising."
+    if get_client is not None:
+        return False
+    with state:
+        _append_message(
+            "system",
+            "⚠ Чат недоступен: не установлен пакет langgraph-sdk "
+            "(pip install langgraph-sdk).",
+        )
+    return True
+
+
 @asynchronous.task
 async def chat_send(**kwargs):
     "Send the current input to GeoAgent and stream the reply."
@@ -96,13 +230,15 @@ async def chat_send(**kwargs):
     if not text or state.chat_busy:
         return
 
-    if get_client is None:
-        with state:
-            _append_message(
-                "system",
-                "⚠ Чат недоступен: не установлен пакет langgraph-sdk "
-                "(pip install langgraph-sdk).",
-            )
+    # While a run is paused the box answers the approval instead of starting a
+    # second run against the same thread.
+    if state.pending_approval:
+        await _resume(
+            "response" if state.pending_approval.get("allow_respond") else "edit", text
+        )
+        return
+
+    if _agent_unavailable():
         return
 
     with state:
@@ -121,45 +257,14 @@ async def chat_send(**kwargs):
         f"\n\nСообщение пользователя: {text}"
     )
 
-    assistant_text = ""
-    assistant_idx = None
-    announced_sim = False
     try:
         client = get_client(url=AGENT_URL)
         if _thread_id is None:
             thread = await client.threads.create()
             _thread_id = thread["thread_id"]
-
-        async for part in client.runs.stream(
-            _thread_id,
-            AGENT_ASSISTANT_ID,
-            input={"messages": [{"role": "user", "content": context}]},
-            stream_mode="messages-tuple",
-        ):
-            if not announced_sim and _mentions_simulation_tool(part):
-                announced_sim = True
-                assistant_text = ""
-                assistant_idx = None
-                with state:
-                    _append_message(
-                        "system",
-                        "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять "
-                        "несколько минут…",
-                    )
-                continue
-
-            delta = _extract_ai_text(part)
-            if not delta:
-                continue
-            assistant_text += delta
-            with state:
-                if assistant_idx is None:
-                    _append_message("assistant", assistant_text)
-                    assistant_idx = len(state.chat_messages) - 1
-                else:
-                    msgs = list(state.chat_messages)
-                    msgs[assistant_idx] = {"role": "assistant", "text": assistant_text}
-                    state.chat_messages = msgs
+        await _consume(
+            client, input={"messages": [{"role": "user", "content": context}]}
+        )
     except Exception as err:  # noqa: BLE001 - surface any transport error in chat
         with state:
             _append_message("system", f"⚠ Не удалось связаться с агентом: {err}")
@@ -168,7 +273,69 @@ async def chat_send(**kwargs):
             state.chat_busy = False
 
 
+async def _resume(response_type, text=""):
+    """Answer a pending approval and let the paused run continue.
+
+    ``response_type`` is a HumanResponse literal: accept / ignore / response /
+    edit. Only the answer resumes the graph — never a timeout and never the
+    panel being closed.
+    """
+    approval = state.pending_approval
+    if not approval or _agent_unavailable():
+        return
+
+    if response_type == "edit":
+        value = (text or "").strip()
+        if not value:
+            return
+        args = {"action": approval["action"], "args": {approval["edit_key"]: value}}
+        note = f"✏ Исправлено и подтверждено: {value}"
+    elif response_type == "response":
+        value = (text or "").strip()
+        if not value:
+            return
+        args = value
+        note = f"💬 Ответ агенту: {value}"
+    else:
+        args = None
+        note = "✓ Подтверждено." if response_type == "accept" else "✗ Отклонено."
+
+    with state:
+        state.pending_approval = None
+        state.chat_input = ""
+        state.chat_busy = True
+        _append_message("system", note)
+
+    try:
+        client = get_client(url=AGENT_URL)
+        await _consume(
+            client, command={"resume": [{"type": response_type, "args": args}]}
+        )
+    except Exception as err:  # noqa: BLE001 - surface any transport error in chat
+        with state:
+            _append_message("system", f"⚠ Не удалось продолжить работу агента: {err}")
+    finally:
+        with state:
+            state.chat_busy = False
+
+
+@asynchronous.task
+async def approval_accept(**kwargs):
+    "Approve the pending tool call as proposed."
+    _ = kwargs
+    await _resume("accept")
+
+
+@asynchronous.task
+async def approval_reject(**kwargs):
+    "Refuse the pending tool call; the agent is told and can propose something else."
+    _ = kwargs
+    await _resume("ignore")
+
+
 ctrl.chat_send = chat_send
+ctrl.approval_accept = approval_accept
+ctrl.approval_reject = approval_reject
 
 
 # ── Result auto-pickup (artifact contract) ────────────────────────────────
@@ -272,6 +439,70 @@ def render_chat_fab():
             )
 
 
+def render_approval_card():
+    """Pending-approval card: what the agent wants to do, and the answer buttons.
+
+    Deliberately not a chat bubble — an irreversible action must not look like
+    conversation. "Отклонить" comes first so the safe answer is the easy one,
+    and the raw argument is always shown, never only the headline.
+    """
+    with vuetify.VCard(
+        v_if="pending_approval",
+        variant="tonal",
+        color="warning",
+        classes="ma-2 pa-2",
+        style="max-height: 260px; overflow-y: auto;",
+    ):
+        with html.Div(classes="d-flex align-center mb-1"):
+            vuetify.VIcon("mdi-shield-alert-outline", size="small", classes="mr-2")
+            html.Span(
+                "{{ pending_approval.headline }}",
+                style="font-weight: 600; font-size: 13px;",
+            )
+
+        with html.Div(v_for="f, i in pending_approval.fields", key="i", classes="mb-1"):
+            html.Div(
+                "{{ f.label }}",
+                style="font-size: 11px; opacity: 0.75; text-transform: uppercase;",
+            )
+            html.Div(
+                "{{ f.value }}",
+                style=(
+                    "f.code "
+                    "? 'font-family: monospace; font-size: 12px; white-space: pre-wrap; "
+                    "word-break: break-all; background: rgba(0,0,0,0.06); padding: 6px; "
+                    "border-radius: 4px; max-height: 120px; overflow-y: auto;' "
+                    ": 'font-size: 12px; word-break: break-all;'",
+                ),
+            )
+
+        html.Div(
+            "Отклонение не прерывает диалог: агент узнает об отказе и предложит другое.",
+            v_if="!pending_approval.allow_edit",
+            style="font-size: 11px; opacity: 0.7;",
+            classes="mt-1",
+        )
+
+        with html.Div(classes="d-flex ga-2 mt-2"):
+            vuetify.VBtn(
+                "Отклонить",
+                v_if="pending_approval.allow_ignore",
+                size="small",
+                variant="flat",
+                color="error",
+                disabled=("chat_busy",),
+                click=ctrl.approval_reject,
+            )
+            vuetify.VBtn(
+                "Разрешить",
+                v_if="pending_approval.allow_accept",
+                size="small",
+                variant="outlined",
+                disabled=("chat_busy",),
+                click=ctrl.approval_accept,
+            )
+
+
 def render_chat_panel():
     "Chat window anchored to the bottom-right, toggled by the FAB."
     with html.Div(
@@ -324,16 +555,33 @@ def render_chat_panel():
                         ),
                     )
 
+            render_approval_card()
+
             vuetify.VProgressLinear(v_if="chat_busy", indeterminate=True, color="primary")
 
             with vuetify.VCardActions(classes="pa-2"):
+                # While an approval is pending the box answers it rather than
+                # starting a second run, so the placeholder has to say so —
+                # a silently repurposed input is how people approve the wrong
+                # thing.
                 vuetify.VTextField(
                     v_model=("chat_input",),
-                    placeholder="Напишите сообщение…",
+                    placeholder=(
+                        "pending_approval "
+                        "? (pending_approval.allow_edit "
+                        "? 'Исправьте значение и нажмите Enter…' "
+                        ": 'Напишите агенту, что сделать иначе…') "
+                        ": 'Напишите сообщение…'",
+                    ),
                     density="compact",
                     variant="outlined",
                     hide_details=True,
-                    disabled=("chat_busy",),
+                    disabled=(
+                        "chat_busy || (pending_approval && "
+                        "!pending_approval.allow_edit && "
+                        "!pending_approval.allow_respond)",
+                    ),
+                    bg_color=("pending_approval ? 'amber-lighten-5' : undefined",),
                     keyup_enter=ctrl.chat_send,
                 )
                 with vuetify.VBtn(
