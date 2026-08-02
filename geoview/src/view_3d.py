@@ -16,10 +16,7 @@ from .custom_classes import CustomInteractorStyle
 from .common import set_active_scalars
 
 
-VTK_VIEW_SETTINGS = {
-    # "interactive_ratio": 1,
-    # "interactive_quality": 90,
-}
+VTK_VIEW_SETTINGS = {}
 
 state.colormaps = sorted(["cividis", "inferno", "jet",
     "hot", "hsv", "magma", "plasma", "rainbow",
@@ -91,7 +88,6 @@ def update_field(activeField, **kwargs):
     activeStep = int(state.activeStep) if state.activeStep else 0
     if comp == 'states':
         state.stateDate = FIELD['dates'][activeStep].strftime('%Y-%m-%d')
-        state.need_time_slider = True
     else:
         state.need_time_slider = False
 
@@ -416,20 +412,6 @@ def change_speed():
 
 ctrl.changeSpeed = change_speed
 
-@state.change("exportingData")
-def dump_results(exportingData, **kwargs):
-    "Export data."
-    _ = kwargs
-
-    if not exportingData:
-        return
-
-    field = FIELD['model']
-    title = field.meta.get('TITLE', 'Untitled')
-    dir_path = str(field._path.parent)
-    field._dump_binary_results(dir_path, mode='w', title=title)
-
-    state.exportingData = False
 
 def render_3d():
     "3D view layout."
@@ -450,8 +432,7 @@ def render_3d():
                 ctrl.view_update.add(view.update)
                 ctrl.view_reset_camera.add(view.reset_camera)
 
-    with html.Div(
-        style='position: fixed; width: 100%; bottom: 0; padding-left: 10vw; padding-right: 10vw;'):
+    with html.Div(style='position: fixed; width: 80%; bottom: 0; left: 10%;'):
         with vuetify.VTextField(
               v_model=("stateDate",),
               label="Select a date",
@@ -467,15 +448,17 @@ def render_3d():
                     v_model=('activeStep',),
                     label="Timestep",
                     hide_details=True,
-                    style='width: 60vw'
+                    style='width: 50vw'
                     ):
                     with vuetify.Template(v_slot_append=True,
                         properties=[("v_slot_append", "v-slot:append")],):
-                        vuetify.VTextField(
+                        vuetify.VNumberInput(
                             v_model="activeStep",
                             density="compact",
-                            style="width: 80px",
-                            type="number",
+                            style="width: 100px",
+                            control_variant="stacked",
+                            min=0,
+                            max=("max_timestep",),
                             variant="outlined",
                             bg_color=('bgColor',),
                             hide_details=True)
@@ -557,200 +540,72 @@ def render_3d():
                         with vuetify.VMenu(activator="parent",
                             location="right",
                             close_on_content_click=False):
-                            with html.Div(style='width: 20vw'):
-                                with vuetify.VSlider(
+                            with html.Div(style='width: 15vw'):
+                                vuetify.VSlider(
                                     min=0,
                                     max=1,
                                     step=0.1,
                                     v_model=('opacity', 1),
-                                    hide_details=True,
-                                    ):
-                                    with vuetify.Template(v_slot_append=True,
-                                        properties=[("v_slot_append", "v-slot:append")],):
-                                        vuetify.VTextField(
-                                            v_model="opacity",
-                                            density="compact",
-                                            style="width: 70px",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
+                                    thumb_label='true',
+                                    hide_details=True)
             with vuetify.VRow(classes='pa-0 ma-0'):
                 with vuetify.VCol(classes='pa-0 ma-0'):
                     with vuetify.VBtn(icon=True,flat=True,
                         style="background-color:transparent;\
                                backface-visibility:visible;"):
                         vuetify.VTooltip(
-                            text='Filter grid based on cell index I',
-                            activator="parent",
-                            location="end")
-                        vuetify.VIcon("mdi-alpha-i")
-                        with vuetify.VMenu(activator="parent",
-                            location="right",
-                            close_on_content_click=False):
-                            with html.Div(style='width: 30vw'):
-                                with vuetify.VRangeSlider(
-                                    min=1,
-                                    max=("dimens[0]",),
-                                    step=1,
-                                    v_model=("i_slice",),
-                                    hide_details=True
-                                    ):
-                                    with vuetify.Template(v_slot_prepend=True,
-                                        properties=[("v_slot_prepend", "v-slot:prepend")],):
-                                        vuetify.VTextField(
-                                            v_model="i_slice_0",
-                                            density="compact",
-                                            style="width: 70px",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
-                                    with vuetify.Template(v_slot_append=True,
-                                        properties=[("v_slot_append", "v-slot:append")],):
-                                        vuetify.VTextField(
-                                            v_model="i_slice_1",
-                                            density="compact",
-                                            style="width: 70px",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
-            with vuetify.VRow(classes='pa-0 ma-0'):
-                with vuetify.VCol(classes='pa-0 ma-0'):
-                    with vuetify.VBtn(icon=True,flat=True,
-                        style="background-color:transparent;\
-                               backface-visibility:visible;"):
-                        vuetify.VTooltip(
-                            text='Filter grid based on cell index J',
-                            activator="parent",
-                            location="end")
-                        vuetify.VIcon("mdi-alpha-j")
-                        with vuetify.VMenu(activator="parent",
-                            location="right",
-                            close_on_content_click=False):
-                            with html.Div(style='width: 30vw'):
-                                with vuetify.VRangeSlider(
-                                    min=1,
-                                    max=("dimens[1]",),
-                                    step=1,
-                                    v_model=("j_slice",),
-                                    hide_details=True
-                                    ):
-                                    with vuetify.Template(v_slot_prepend=True,
-                                        properties=[("v_slot_prepend", "v-slot:prepend")],):
-                                        vuetify.VTextField(
-                                            v_model="j_slice_0",
-                                            density="compact",
-                                            style="width: 70px",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
-                                    with vuetify.Template(v_slot_append=True,
-                                        properties=[("v_slot_append", "v-slot:append")],):
-                                        vuetify.VTextField(
-                                            v_model="j_slice_1",
-                                            density="compact",
-                                            style="width: 70px",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
-            with vuetify.VRow(classes='pa-0 ma-0'):
-                with vuetify.VCol(classes='pa-0 ma-0'):
-                    with vuetify.VBtn(icon=True,flat=True,
-                        style="background-color:transparent;\
-                               backface-visibility:visible;"):
-                        vuetify.VTooltip(
-                            text='Filter grid based on cell index K',
-                            activator="parent",
-                            location="end")
-                        vuetify.VIcon("mdi-alpha-k")
-                        with vuetify.VMenu(activator="parent",
-                            location="right",
-                            close_on_content_click=False):
-                            with html.Div(style='width: 30vw'):
-                                with vuetify.VRangeSlider(
-                                    min=1,
-                                    max=("dimens[2]",),
-                                    step=1,
-                                    v_model=("k_slice",),
-                                    hide_details=True
-                                    ):
-                                    with vuetify.Template(v_slot_prepend=True,
-                                        properties=[("v_slot_prepend", "v-slot:prepend")],):
-                                        vuetify.VTextField(
-                                            v_model="k_slice_0",
-                                            density="compact",
-                                            style="width: 70px",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
-                                    with vuetify.Template(v_slot_append=True,
-                                        properties=[("v_slot_append", "v-slot:append")],):
-                                        vuetify.VTextField(
-                                            v_model="k_slice_1",
-                                            density="compact",
-                                            style="width: 70px",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
-            with vuetify.VRow(classes='pa-0 ma-0'):
-                with vuetify.VCol(classes='pa-0 ma-0'):
-                    with vuetify.VBtn(icon=True,flat=True,
-                        style="background-color:transparent;\
-                               backface-visibility:visible;",
-                        active=('show_well_blocks',),
-                        click='show_well_blocks = !show_well_blocks'):
-                        vuetify.VTooltip(
-                            text='Show only well blocks',
-                            activator="parent",
-                            location="end")
-                        vuetify.VIcon("mdi-alpha-w")
-            with vuetify.VRow(classes='pa-0 ma-0'):
-                with vuetify.VCol(classes='pa-0 ma-0'):
-                    with vuetify.VBtn(icon=True,flat=True,
-                        style="background-color:transparent;\
-                               backface-visibility:visible;"):
-                        vuetify.VTooltip(
-                            text='Filter grid based of scalar values',
+                            text='Filter cells',
                             activator="parent",
                             location="end")
                         vuetify.VIcon("mdi-filter")
                         with vuetify.VMenu(activator="parent",
-                            location="right",
+                            location="right center",
                             close_on_content_click=False):
-                            with html.Div(style='width: 30vw'):
-                                with vuetify.VRangeSlider(
-                                    min=("field_slice_min",),
-                                    max=("field_slice_max",),
-                                    step=("field_slice_step",),
-                                    v_model=("field_slice",),
-                                    hide_details=True
-                                    ):
-                                    with vuetify.Template(v_slot_prepend=True,
-                                        properties=[("v_slot_prepend", "v-slot:prepend")],):
-                                        vuetify.VTextField(
-                                            v_model="field_slice_0",
-                                            density="compact",
-                                            style="width: 80px;",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
-                                    with vuetify.Template(v_slot_append=True,
-                                        properties=[("v_slot_append", "v-slot:append")],):
-                                        vuetify.VTextField(
-                                            v_model="field_slice_1",
-                                            density="compact",
-                                            style="width: 80px",
-                                            type="number",
-                                            variant="outlined",
-                                            bg_color=('bgColor',),
-                                            hide_details=True)
+                            with vuetify.VContainer(style='width: 25vw'):
+                                with vuetify.VRow():
+                                    with vuetify.VCard(style='width: 7vw; white-space: nowrap', variant='flat'):
+                                        vuetify.VCardText('Field')
+                                    vuetify.VRangeSlider(
+                                        min=("field_slice_min",),
+                                        max=("field_slice_max",),
+                                        step=("field_slice_step",),
+                                        v_model=("field_slice",),
+                                        thumb_label='true',
+                                        hide_details=True)
+                                with vuetify.VRow():
+                                    with vuetify.VCard(style='width: 7vw; white-space: nowrap', variant='flat'):
+                                        vuetify.VCardText('I slice')
+                                    vuetify.VRangeSlider(
+                                        min=1,
+                                        max=("dimens[0]",),
+                                        step=1,
+                                        v_model=("i_slice",),
+                                        thumb_label='true',
+                                        hide_details=True)
+                                with vuetify.VRow():
+                                    with vuetify.VCard(style='width: 7vw; white-space: nowrap', variant='flat'):
+                                        vuetify.VCardText('J slice')
+                                    vuetify.VRangeSlider(
+                                        min=1,
+                                        max=("dimens[1]",),
+                                        step=1,
+                                        v_model=("j_slice",),
+                                        thumb_label='true',
+                                        hide_details=True)
+                                with vuetify.VRow():
+                                    with vuetify.VCard(style='width: 7vw; white-space: nowrap', variant='flat'):
+                                        vuetify.VCardText('K slice')
+                                    vuetify.VRangeSlider(
+                                        min=1,
+                                        max=("dimens[2]",),
+                                        step=1,
+                                        v_model=("k_slice",),
+                                        thumb_label='hide',
+                                        hide_details=True)
+                                vuetify.VCheckbox(label='Show only well blokcs',
+                                    v_model=('show_well_blocks', False),
+                                    hide_details=True,
+                                    density='compact')
             with vuetify.VRow(classes='pa-0 ma-0'):
                 with vuetify.VCol(classes='pa-0 ma-0'):
                     with vuetify.VBtn(icon=True,flat=True,
@@ -792,14 +647,3 @@ def render_3d():
                             activator="parent",
                             location="end")
                         vuetify.VIcon("mdi-fit-to-page-outline")
-
-    with html.Div(style='position: fixed; bottom: 3px; right: 0;'):
-        with vuetify.VBtn("Export",
-            disabled=('max_timestep == 0',),
-            color=("max_timestep == 0 ? '' : '#51b03c'",),
-            click='exportingData = true',
-            loading=('exportingData',)):
-            vuetify.VTooltip(
-                text='Export simulated data',
-                activator="parent",
-                location="left")

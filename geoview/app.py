@@ -29,6 +29,7 @@ from .src.script import render_script
 from .src.help import render_help
 from .src.simulation import simulate
 from .src.agent_chat import render_chat_fab, render_chat_panel, watch_agent_results
+from .src.optimization import render_optimization
 
 state.theme = 'light'
 state.sideBarColor = "grey-lighten-4"
@@ -159,6 +160,7 @@ with VAppLayout(server, theme=('theme',)) as layout:
             vuetify.VSpacer()
             with vuetify.VTabs(v_model=('activeTab', 'home')):
                 vuetify.VTab('Home', value="home")
+                vuetify.VTab('Optimization', value="opt")
                 vuetify.VTab('3d view', value="3d")
                 vuetify.VTab('2d view', value="2d")
                 vuetify.VTab('Timeseries', value="ts")
@@ -200,9 +202,11 @@ with VAppLayout(server, theme=('theme',)) as layout:
                 render_info()
             with html.Div(v_if="activeTab === 'script'"):
                 render_script()
+            with html.Div(v_if="activeTab === 'opt'", classes="fill-height"):
+                render_optimization()
 
 
-if __name__ == "__main__":
+def server_start():
     # Select the GeoAgent provider/model *before* anything is launched, so the
     # LangGraph server later comes up already using that choice. Pull provider
     # credentials from GeoAgent/.env first so known API keys aren't prompted for.
@@ -229,3 +233,7 @@ if __name__ == "__main__":
         server.start(timeout=100)
     finally:
         _stop_agent_process(agent_process)
+
+
+if __name__ == "__main__":
+    server_start()

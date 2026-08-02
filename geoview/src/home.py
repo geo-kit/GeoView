@@ -4,6 +4,7 @@ from glob import glob
 from uuid import uuid4
 import asyncio
 import vtk
+import numpy as np
 import pandas as pd
 
 from vtkmodules.vtkRenderingCore import (
@@ -41,6 +42,7 @@ state.emptyHistory = True
 state.errMessage = ''
 state.loadFailed = False
 state.loadedModelPath = None
+state.simulationResultDir = None
 state.simulationFailed = False
 state.modelID = 0
 
@@ -75,7 +77,7 @@ state.active_cells = 0
 state.units = 0
 state.pore_volume = 0
 state.num_wells = 0
-state.fluids = []
+state.fluids = None
 state.total_oil_production = 0
 state.total_wat_production = 0
 state.total_gas_production = 0
@@ -146,6 +148,7 @@ async def load_file_async():
         state.showHistory = False
         state.showDirList = False
         state.simulationFailed = False
+        state.simulationResultDir = None
 
     field = Field(state.user_request)
 
@@ -282,11 +285,19 @@ async def submit_sumulation_task(queue, results, path):
         await asyncio.sleep(1)
 
 
+def fill_unsimulated(data):
+    "Fill cells skipped by the simulator with the timestep mean."
+    means = np.nanmean(data, axis=1)
+    nan_t, nan_c = np.where(np.isnan(data))
+    data[nan_t, nan_c] = means[nan_t]
+    return data
+
 @asynchronous.task
 async def simulate_async():
     "Simulate async."
     with state:
         state.simulating = True
+        state.simulationResultDir = None
 
     try:
         if state.loadedModelPath is None:
@@ -303,9 +314,13 @@ async def simulate_async():
 
         field = FIELD['model']
 
-        field.states.pressure = results['pressure']
+        # Results are natural-grid arrays with NaN outside the simulator's
+        # active set, which can be smaller than the model's ACTNUM.
+        actnum_flat = np.asarray(field.grid.actnum).ravel(order='F').astype(bool)
+
+        field.states.pressure = fill_unsimulated(results['pressure'][:, actnum_flat])
         for k, v in results['saturations'].items():
-            setattr(field.states, k, v)
+            setattr(field.states, k, fill_unsimulated(v[:, actnum_flat]))
 
         new_attrs = ['PRESSURE',] + list(results['saturations'].keys())
         for k in field.states.attributes:
@@ -327,6 +342,7 @@ async def simulate_async():
 
     with state:
         state.modelID += 1
+        state.simulationResultDir = results["result_dir"]
         state.simulating = False
         state.simulationFailed = False
         state.errMessage = ''

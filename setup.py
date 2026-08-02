@@ -14,7 +14,7 @@ setup(
     zip_safe=False,
     platforms='any',
     install_requires=[
-        "GeoCode @ git+https://github.com/github.com/geo-kit/GeoCode",
+        "GeoCode @ git+https://github.com/geo-kit/GeoCode",
         "trame",
         "trame-vuetify",
         "trame-vtk",
