@@ -18,7 +18,8 @@ except ModuleNotFoundError:
         raise ModuleNotFoundError("Module GeoCode is not found.")
 
 from .src.agent_setup import configure_agent
-from .src.config import args, agent_enabled, server, state, ctrl, renderer, jserver
+from .src.config import (
+    AGENT_RESULT_DIR, args, agent_enabled, server, state, ctrl, renderer, jserver)
 from .src.home import render_home, make_empty_grid
 from .src.view_3d import render_3d
 from .src.view_2d import render_2d
@@ -99,11 +100,14 @@ def _start_agent_process(qualified_model, environment):
 
     # Force UTF-8 stdio so GeoAgent's rich console does not crash with
     # UnicodeEncodeError on legacy Windows code pages (e.g. cp1251).
+    # GEOVIEW_RESULT_DIR is the agent's half of the artifact contract: passing it
+    # here keeps it out of the prompt, so the model cannot get the path wrong.
     agent_env = {
         **environment,
         "PYTHONUTF8": "1",
         "PYTHONIOENCODING": "utf-8",
         "GEOAGENT_MODEL": qualified_model,
+        "GEOVIEW_RESULT_DIR": str(AGENT_RESULT_DIR),
     }
 
     process = subprocess.Popen(

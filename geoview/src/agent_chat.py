@@ -9,8 +9,8 @@ the loaded model so the 3D view updates automatically.
 """
 import asyncio
 import json
+import os
 import pickle
-from pathlib import Path
 
 from trame.widgets import html, vuetify3 as vuetify
 from trame.app import asynchronous
@@ -21,15 +21,20 @@ except ModuleNotFoundError:
     # Only the chat needs it; a plain GeoView launch must still start without it.
     get_client = None
 
-from .config import state, ctrl, FIELD, agent_enabled
+from .config import AGENT_RESULT_DIR, state, ctrl, FIELD, agent_enabled
 
 # GeoAgent langgraph server (started by app.py with --agent).
 AGENT_URL = "http://127.0.0.1:2024"
 AGENT_ASSISTANT_ID = "GeoAgent"
 
-# Shared result directory (GeoView side of the artifact contract).
-AGENT_RESULT_DIR = Path(__file__).resolve().parents[2] / ".agent_runtime"
 (AGENT_RESULT_DIR / "results").mkdir(parents=True, exist_ok=True)
+
+# Which agent is on the other end of the socket.
+#   public — GeoAgent, which computes nothing itself and drives GeoView instead.
+#   pro    — GeoAgentPro, which runs JutulDarcy in its own environment and expects
+#            the older preamble naming its bridge tool explicitly.
+# Both preambles are kept below; switch with GEOVIEW_AGENT_PROFILE=pro.
+AGENT_PROFILE = os.environ.get("GEOVIEW_AGENT_PROFILE", "public").strip().lower()
 
 state.agentMode = bool(agent_enabled)
 state.showChat = False
@@ -140,23 +145,116 @@ def _extract_ai_text(part):
     return ""
 
 
-def _mentions_simulation_tool(part):
-    """True if this chunk is an assistant tool call to the simulation bridge."""
+# Tool call -> the line shown in the chat while it runs. Anything not listed here
+# passes silently; the agent narrates it in its own reply.
+_TOOL_NOTICES = {
+    "run_simulation_in_geoview":
+        "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять несколько минут…",
+    "load_model_in_geoview": "📂 Загружаю модель в GeoView…",
+    "prepare_optimization_in_geoview": "📝 Заполняю форму оптимизации…",
+    # GeoAgentPro computes in its own process instead of pressing GeoView's button.
+    "simulate_reservoir_for_geoview":
+        "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять несколько минут…",
+}
+
+
+def _tool_notice(part):
+    """Return the status line for a tool call in this chunk, or '' if there is none."""
     data = getattr(part, "data", None)
     if not isinstance(data, (list, tuple)) or not data:
-        return False
+        return ""
     msg = data[0]
     if not isinstance(msg, dict):
-        return False
+        return ""
     for call in msg.get("tool_calls") or []:
-        if isinstance(call, dict) and call.get("name") == "simulate_reservoir_for_geoview":
-            return True
-    return False
+        if isinstance(call, dict) and call.get("name") in _TOOL_NOTICES:
+            return _TOOL_NOTICES[call["name"]]
+    return ""
 
 
 def _append_message(role, text):
     "Append a chat message (reassign list so trame reacts)."
     state.chat_messages = state.chat_messages + [{"role": role, "text": text}]
+
+
+# ── Request context ───────────────────────────────────────────────────────
+#
+# The agent has no way to query GeoView, so every message carries a snapshot of
+# what is on screen. It is rebuilt each time, which is why "what is loaded?" needs
+# no tool call at all.
+
+
+def _model_summary():
+    "Describe the loaded model from the values the Info tab already computes."
+    if FIELD.get("model") is None or not state.loadedModelPath:
+        return "Модель не загружена."
+
+    lines = [f"Загруженная модель: {state.loadedModelPath}"]
+    if state.dimens and any(state.dimens):
+        nx, ny, nz = state.dimens
+        lines.append(
+            f"Сетка: {nx}x{ny}x{nz}, ячеек всего {state.total_cells}, "
+            f"активных {state.active_cells}"
+        )
+    if state.fluids:
+        lines.append(f"Фазы: {', '.join(state.fluids)}")
+    if state.startDate and state.lastDate:
+        lines.append(
+            f"Даты: с {state.startDate} по {state.lastDate}, "
+            f"шагов {state.max_timestep}"
+        )
+
+    try:
+        names = list(FIELD["model"].wells.names)
+    except Exception:  # noqa: BLE001 - the summary must never break the chat
+        names = []
+    if names:
+        shown = ", ".join(names[:12]) + (" …" if len(names) > 12 else "")
+        lines.append(f"Скважин: {len(names)} ({shown})")
+    elif state.num_wells:
+        lines.append(f"Скважин: {state.num_wells}")
+
+    try:
+        attributes = list(FIELD["model"].states.attributes)
+    except Exception:  # noqa: BLE001
+        attributes = []
+    lines.append(
+        f"Результаты расчёта: есть ({', '.join(attributes)})" if attributes
+        else "Результаты расчёта: модель ещё не считалась"
+    )
+    return "\n".join(lines)
+
+
+def _pro_preamble():
+    """The preamble GeoAgentPro expects.
+
+    Kept verbatim: Pro's bridge tool takes data_file and output_dir from this text,
+    and its flow assumes it may act without asking.
+    """
+    model_path = state.loadedModelPath or state.user_request or ""
+    return (
+        "[Контекст GeoView] "
+        + (f"Загруженная модель: {model_path}. " if model_path else "Модель не загружена. ")
+        + f"Каталог результатов: {state.agent_result_dir}. "
+        "Чтобы посчитать/симулировать загруженную модель, вызывай инструмент "
+        "simulate_reservoir_for_geoview(data_file, output_dir), где data_file — путь "
+        "модели выше, output_dir — этот каталог результатов. Не проси подтверждений."
+    )
+
+
+def _public_preamble():
+    """State of the app, as facts.
+
+    No instructions on which tool to call — the public agent's own prompt covers
+    that — and nothing telling it to skip questions: it is supposed to ask for the
+    optimization parameters it cannot know.
+    """
+    return "[Контекст GeoView]\n" + _model_summary()
+
+
+def _preamble():
+    "The context block prepended to every user message."
+    return _pro_preamble() if AGENT_PROFILE == "pro" else _public_preamble()
 
 
 async def _consume(client, **stream_kwargs):
@@ -167,7 +265,7 @@ async def _consume(client, **stream_kwargs):
     """
     assistant_text = ""
     assistant_idx = None
-    announced_sim = False
+    announced = set()
 
     async for part in client.runs.stream(
         _thread_id,
@@ -182,16 +280,14 @@ async def _consume(client, **stream_kwargs):
                 _append_message("system", "⏸ Требуется ваше подтверждение.")
             return
 
-        if not announced_sim and _mentions_simulation_tool(part):
-            announced_sim = True
+        notice = _tool_notice(part)
+        if notice and notice not in announced:
+            announced.add(notice)
+            # The tool call closes the assistant bubble; text after it starts a new one.
             assistant_text = ""
             assistant_idx = None
             with state:
-                _append_message(
-                    "system",
-                    "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять "
-                    "несколько минут…",
-                )
+                _append_message("system", notice)
             continue
 
         delta = _extract_ai_text(part)
@@ -246,16 +342,7 @@ async def chat_send(**kwargs):
         state.chat_input = ""
         state.chat_busy = True
 
-    model_path = state.loadedModelPath or state.user_request or ""
-    context = (
-        "[Контекст GeoView] "
-        + (f"Загруженная модель: {model_path}. " if model_path else "Модель не загружена. ")
-        + f"Каталог результатов: {state.agent_result_dir}. "
-        "Чтобы посчитать/симулировать загруженную модель, вызывай инструмент "
-        "simulate_reservoir_for_geoview(data_file, output_dir), где data_file — путь "
-        "модели выше, output_dir — этот каталог результатов. Не проси подтверждений."
-        f"\n\nСообщение пользователя: {text}"
-    )
+    context = _preamble() + f"\n\nСообщение пользователя: {text}"
 
     try:
         client = get_client(url=AGENT_URL)
@@ -374,23 +461,103 @@ def _apply_field_states(result):
     _append_message("system", "✓ Расчёт подхватился во вкладке 3D view.")
 
 
+# ── Commands from the agent ───────────────────────────────────────────────
+#
+# The public GeoAgent computes nothing; it asks GeoView to do what the user could
+# do by hand. A handler prepares state and may return a controller to run *after*
+# the state lock is released — load_file_async and simulate_async open their own.
+
+
+def _apply_load_model(result):
+    "Open the model the agent picked."
+    data_file = result.get("data_file")
+    if not data_file:
+        _append_message("system", "⚠ Агент не указал, какую модель открыть.")
+        return None
+    if state.loading:
+        _append_message("system", "⚠ GeoView уже загружает модель — запрос пропущен.")
+        return None
+
+    state.user_request = data_file
+    state.activeTab = "home"
+    _append_message("system", f"📂 Открываю модель: {data_file}")
+    return ctrl.load_file_async
+
+
+def _apply_run_simulation(result):
+    "Press Simulate for the agent."
+    _ = result
+    if FIELD.get("model") is None or state.loadedModelPath is None:
+        _append_message(
+            "system", "⚠ Расчёт невозможен: в GeoView не загружена модель."
+        )
+        return None
+    if state.simulating:
+        _append_message("system", "⚠ Расчёт уже идёт — запрос пропущен.")
+        return None
+
+    _append_message(
+        "system", "▶ Запускаю расчёт — результат появится во вкладке 3D view."
+    )
+    return ctrl.simulate_async
+
+
+# Tool argument -> GeoView form field (state.opt_<key>), see optimization.OPT_FIELDS.
+_OPT_PARAM_KEYS = (
+    "oil_price", "gas_price", "water_price", "water_cost", "gas_cost",
+    "discount_rate", "months", "max_iterations",
+    "bhp_prod_min", "bhp_prod_max", "bhp_inj_min", "bhp_inj_max",
+)
+
+
+def _apply_optimization_setup(result):
+    """Fill the optimization form and show it.
+
+    Deliberately does not start the run: the form's own validator enables the
+    Optimize button, and pressing it stays with the user.
+    """
+    params = result.get("params") or {}
+    missing = [key for key in _OPT_PARAM_KEYS if params.get(key) is None]
+    if missing:
+        _append_message(
+            "system", f"⚠ В параметрах оптимизации не хватает полей: {', '.join(missing)}"
+        )
+        return None
+
+    for key in _OPT_PARAM_KEYS:
+        setattr(state, f"opt_{key}", params[key])
+    state.activeTab = "opt"
+    _append_message(
+        "system",
+        "📝 Форма оптимизации заполнена — проверьте значения и нажмите Optimize.",
+    )
+    return None
+
+
 def apply_result(result):
-    "Route a result manifest to its display handler based on `type`."
+    """Route a manifest to its handler based on `type`.
+
+    Returns a callable to invoke once the state lock is released, or None.
+    """
     if result.get("status") != "ok":
         _append_message("system", "⚠ " + result.get("message", "Ошибка расчёта."))
-        return
+        return None
 
     handlers = {
+        # Computed elsewhere and handed over (GeoAgentPro).
         "field_states": _apply_field_states,
-        # future: "optimization_report": _apply_optimization_report, ...
+        # Asked of GeoView (GeoAgent).
+        "load_model": _apply_load_model,
+        "run_simulation": _apply_run_simulation,
+        "optimization_setup": _apply_optimization_setup,
     }
     handler = handlers.get(result.get("type"))
     if handler is None:
         _append_message(
             "system", f"⚠ Неизвестный тип результата: {result.get('type')}"
         )
-        return
-    handler(result)
+        return None
+    return handler(result)
 
 
 @asynchronous.task
@@ -411,7 +578,10 @@ async def watch_agent_results(**kwargs):
                     manifest_path = AGENT_RESULT_DIR / "results" / run_id / "result.json"
                     result = json.loads(manifest_path.read_text(encoding="utf-8"))
                     with state:
-                        apply_result(result)
+                        followup = apply_result(result)
+                    # Outside the lock: these controllers acquire state themselves.
+                    if followup is not None:
+                        followup()
         except Exception:  # noqa: BLE001 - never let the watcher die
             pass
         await asyncio.sleep(1.0)

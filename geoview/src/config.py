@@ -1,5 +1,6 @@
 "App configs."
 from enum import Enum
+from pathlib import Path
 from types import SimpleNamespace
 from trame.app import get_server
 
@@ -46,6 +47,10 @@ args = server.cli.parse_args()
 
 state.vtk_remote = True if args.vtk_remote else False
 agent_enabled = bool(args.agent)
+
+# GeoView side of the agent artifact contract. The agent writes requests and results
+# here; app.py passes the path to the agent process, agent_chat.py watches it.
+AGENT_RESULT_DIR = Path(__file__).resolve().parents[2] / ".agent_runtime"
 
 renderer = vtkRenderer()
 renderer.SetBackground(1, 1, 1)
