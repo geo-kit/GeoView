@@ -1,3 +1,7 @@
+### 🌐 Multi-Language Support
+
+**English** | [Русский](./translations/ru/README.md)
+
 # GeoView
 
 Web application for simulation and visualization of reservoir models.
@@ -56,7 +60,7 @@ Script writing:
 
 ## Performance
 
-Loading time and memory usage for benchmark models in the [benchmarks]([https://github.com/geo-kit/GeoView/benchmarks](https://github.com/geo-kit/GeoView/tree/main/benchmarks)) directory measured on a PC with Intel Core Ultra 7, 3.9GHz, 64Gb CPU:
+Loading time and memory usage for benchmark models in the [benchmarks](./benchmarks) directory measured on a PC with Intel Core Ultra 7, 3.9GHz, 64Gb CPU:
 
 | Number of cells | Loading time | Memory usage |
 |-------|---------|---------|
@@ -144,7 +148,7 @@ be based on the `GeoCode` framework
 [https://github.com/geo-kit/GeoCode](https://github.com/geo-kit/GeoCode).
 Read the [documentation](https://geo-kit.github.io/GeoCode/)
 and see
-[examples](https://github.com/geo-kit/GeoCode/blob/main/tutorials) 
+[examples](https://github.com/geo-kit/GeoCode/tree/main/notebooks)
 in the `GeoCode` repository to prepare a script.
 
 ## Next releases
