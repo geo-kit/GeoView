@@ -42,6 +42,14 @@ def _project_root():
     return Path(__file__).resolve().parents[2]
 
 
+AGENT_DIR_NAME = "GeoAgent"
+
+
+def _agent_root():
+    """Return the GeoAgent project directory checked out next to GeoView."""
+    return _project_root() / AGENT_DIR_NAME
+
+
 def _load_agent_env():
     """Fill provider credentials from ``GeoAgent/.env`` so the picker need not ask.
 
@@ -50,7 +58,7 @@ def _load_agent_env():
     still wins. This is why the OpenAI/other API keys are picked up automatically
     instead of prompting for them.
     """
-    env_file = _project_root() / "GeoAgent" / ".env"
+    env_file = _agent_root() / ".env"
     if not env_file.exists():
         return
     for raw in env_file.read_text(encoding="utf-8").splitlines():
@@ -79,7 +87,7 @@ def _start_agent_process(qualified_model, environment):
     Both are handed to the child so the LangGraph server boots already using the
     selected model (GeoAgent reads ``GEOAGENT_MODEL`` at import).
     """
-    agent_dir = _project_root() / "GeoAgent"
+    agent_dir = _agent_root()
     langgraph_executable = _agent_langgraph(agent_dir)
 
     for path, description in (
