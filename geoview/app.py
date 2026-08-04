@@ -19,8 +19,8 @@ except ModuleNotFoundError:
 
 from .src.agent_setup import configure_agent
 from .src.config import (
-    AGENT_DIR_NAME, AGENT_RESULT_DIR, args, agent_enabled, server, state, ctrl,
-    renderer, jserver)
+    AGENT_DIR_NAME, AGENT_PROFILE, AGENT_RESULT_DIR, args, agent_enabled, server,
+    state, ctrl, renderer, jserver)
 from .src.home import render_home, make_empty_grid
 from .src.view_3d import render_3d
 from .src.view_2d import render_2d
@@ -126,9 +126,12 @@ def _start_agent_process(qualified_model, environment):
         cwd=agent_dir,
         env=agent_env,
     )
+    # Name the agent that actually started: the profile is an environment
+    # variable, so the console is the only place to catch a stale one.
     print(
-        f"GeoAgent LangGraph server started (PID {process.pid}) on "
-        f"http://127.0.0.1:2024 using {qualified_model}."
+        f"{AGENT_DIR_NAME} LangGraph server started (PID {process.pid}) on "
+        f"http://127.0.0.1:2024 using {qualified_model} "
+        f"[profile={AGENT_PROFILE}, dir={agent_dir}]."
     )
     return process
 
