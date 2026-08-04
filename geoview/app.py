@@ -19,7 +19,8 @@ except ModuleNotFoundError:
 
 from .src.agent_setup import configure_agent
 from .src.config import (
-    AGENT_RESULT_DIR, args, agent_enabled, server, state, ctrl, renderer, jserver)
+    AGENT_DIR_NAME, AGENT_RESULT_DIR, args, agent_enabled, server, state, ctrl,
+    renderer, jserver)
 from .src.home import render_home, make_empty_grid
 from .src.view_3d import render_3d
 from .src.view_2d import render_2d
@@ -43,11 +44,12 @@ def _project_root():
     return Path(__file__).resolve().parents[2]
 
 
-AGENT_DIR_NAME = "GeoAgent"
-
-
 def _agent_root():
-    """Return the GeoAgent project directory checked out next to GeoView."""
+    """Return the agent project directory checked out next to GeoView.
+
+    ``GeoAgent`` by default; ``GEOVIEW_AGENT_PROFILE=pro`` selects ``GeoAgentPro``
+    (see src/config.py), so a demo switches between the two without editing code.
+    """
     return _project_root() / AGENT_DIR_NAME
 
 

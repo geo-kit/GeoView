@@ -9,7 +9,6 @@ the loaded model so the 3D view updates automatically.
 """
 import asyncio
 import json
-import os
 import pickle
 
 from trame.widgets import html, vuetify3 as vuetify
@@ -21,20 +20,17 @@ except ModuleNotFoundError:
     # Only the chat needs it; a plain GeoView launch must still start without it.
     get_client = None
 
-from .config import AGENT_RESULT_DIR, state, ctrl, FIELD, agent_enabled
+# AGENT_PROFILE picks which agent is on the other end of the socket, and with it
+# which preamble to send: the public one states GeoView's state as facts, the pro
+# one names GeoAgentPro's bridge tool explicitly. Both are kept below.
+from .config import (
+    AGENT_PROFILE, AGENT_RESULT_DIR, state, ctrl, FIELD, agent_enabled)
 
 # GeoAgent langgraph server (started by app.py with --agent).
 AGENT_URL = "http://127.0.0.1:2024"
 AGENT_ASSISTANT_ID = "GeoAgent"
 
 (AGENT_RESULT_DIR / "results").mkdir(parents=True, exist_ok=True)
-
-# Which agent is on the other end of the socket.
-#   public — GeoAgent, which computes nothing itself and drives GeoView instead.
-#   pro    — GeoAgentPro, which runs JutulDarcy in its own environment and expects
-#            the older preamble naming its bridge tool explicitly.
-# Both preambles are kept below; switch with GEOVIEW_AGENT_PROFILE=pro.
-AGENT_PROFILE = os.environ.get("GEOVIEW_AGENT_PROFILE", "public").strip().lower()
 
 state.agentMode = bool(agent_enabled)
 state.showChat = False

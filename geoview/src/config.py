@@ -1,4 +1,5 @@
 "App configs."
+import os
 from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,6 +52,15 @@ agent_enabled = bool(args.agent)
 # GeoView side of the agent artifact contract. The agent writes requests and results
 # here; app.py passes the path to the agent process, agent_chat.py watches it.
 AGENT_RESULT_DIR = Path(__file__).resolve().parents[2] / ".agent_runtime"
+
+# Which agent GeoView talks to. One switch, because the two differ in both the
+# checkout to launch and the preamble they expect:
+#   public (default) — GeoAgent, which computes nothing and drives GeoView instead
+#   pro              — GeoAgentPro, which runs JutulDarcy in its own environment
+# GEOVIEW_AGENT_DIR overrides the directory alone, for a checkout named differently.
+AGENT_PROFILE = os.environ.get("GEOVIEW_AGENT_PROFILE", "public").strip().lower()
+AGENT_DIR_NAME = os.environ.get("GEOVIEW_AGENT_DIR", "").strip() or (
+    "GeoAgentPro" if AGENT_PROFILE == "pro" else "GeoAgent")
 
 renderer = vtkRenderer()
 renderer.SetBackground(1, 1, 1)
