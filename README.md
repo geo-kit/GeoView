@@ -93,7 +93,7 @@ You can add a few optional parameters to the application start command:
 ### GeoAgent model selection
 
 With `--agent`, GeoView selects the provider and model before either process
-starts. The selector supports LM Studio, Ollama, Gemini, and OpenAI:
+starts. The selector supports LM Studio, Ollama, and OpenAI:
 
 ```powershell
 python -m geoview.app --port 8080 --agent
@@ -119,10 +119,9 @@ python -m geoview.app --agent `
 The matching environment variables are `GEOVIEW_AGENT_PROVIDER`,
 `GEOVIEW_AGENT_MODEL`, and `GEOVIEW_AGENT_BASE_URL`.
 
-Cloud API keys are read from the environment (`OPENAI_API_KEY`, or
-`GOOGLE_API_KEY`/`GEMINI_API_KEY` for Gemini). If a key is not already set in the
-environment, GeoView loads it automatically from `GeoAgent/.env` — so the simplest
-setup is to put the key there, one per line:
+Cloud API keys are read from the environment (`OPENAI_API_KEY`). If a key is not
+already set in the environment, GeoView loads it automatically from
+`GeoAgent/.env`, so the simplest setup is to put the key there, one per line:
 
 ```
 OPENAI_API_KEY=sk-...
@@ -132,10 +131,10 @@ The `--agent` launcher then picks it up without prompting, and the key is passed
 only to the GeoAgent child process. GeoView does not start local model servers or
 pull models.
 
-The chat button appears on the Home tab. Ask about the model currently open —
-grid, wells, phases, whether results exist — or ask the agent to find and open a
-model, run the simulation, or fill in the optimization form. It fills the form and
-opens the tab; starting the optimization stays with you.
+The chat button appears on the Home tab. Ask about the model currently open (grid,
+wells, phases, whether results exist), or ask the agent to find and open a model,
+run the simulation, or fill in the optimization form. It fills the form and opens
+the tab; starting the optimization stays with you.
 
 When the application is running, you can click on the help icon in
 the upper right corner to read a brief description of the page. 
