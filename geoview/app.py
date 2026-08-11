@@ -5,7 +5,6 @@ from pathlib import Path
 import subprocess
 import sys
 
-import pandas as pd
 from trame.widgets import html, client, vuetify3 as vuetify
 from trame.ui.vuetify3 import VAppLayout
 
@@ -20,7 +19,7 @@ except ModuleNotFoundError:
 from .src.agent_setup import configure_agent
 from .src.config import (
     AGENT_DIR_NAME, AGENT_PROFILE, AGENT_RESULT_DIR, args, agent_enabled, server,
-    state, ctrl, renderer, jserver)
+    state, ctrl, jserver)
 from .src.home import render_home, make_empty_grid
 from .src.view_3d import render_3d
 from .src.view_2d import render_2d

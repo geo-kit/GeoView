@@ -9,9 +9,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from trame.widgets import trame, html, plotly, vuetify3 as vuetify
+from trame.widgets import trame, plotly, vuetify3 as vuetify
 from trame.app import asynchronous
-from trame.decorators import trigger
 
 from geocode.field.utils.misc import execute_julia_optimize
 

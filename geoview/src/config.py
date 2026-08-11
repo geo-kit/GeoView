@@ -1,18 +1,10 @@
 "App configs."
 import os
-from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
 from trame.app import get_server
 
-from vtkmodules.vtkIOXML import vtkXMLUnstructuredGridReader
-from vtkmodules.numpy_interface import dataset_adapter as dsa
-from vtkmodules.vtkFiltersGeometry import vtkGeometryFilter
-from vtkmodules.vtkRenderingCore import (
-    vtkActor,
-    vtkDataSetMapper,
-    vtkRenderer
-)
+from vtkmodules.vtkRenderingCore import vtkRenderer
 import vtkmodules.vtkRenderingOpenGL2  # noqa
 
 
@@ -44,10 +36,19 @@ server.cli.add_argument(
     metavar="URL",
     help="local or OpenAI-compatible endpoint override for GeoAgent",
 )
+server.cli.add_argument(
+    "--ru",
+    action="store_true",
+    help="Russian wording in the GeoAgent chat (English otherwise)",
+)
 args = server.cli.parse_args()
 
 state.vtk_remote = True if args.vtk_remote else False
 agent_enabled = bool(args.agent)
+
+# Language of the GeoAgent chat and of the context block sent with every message.
+# English unless --ru is passed; the strings themselves live in src/agent_text.py.
+CHAT_LANG = "ru" if args.ru else "en"
 
 # GeoView side of the agent artifact contract. The agent writes requests and results
 # here; app.py passes the path to the agent process, agent_chat.py watches it.

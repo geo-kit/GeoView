@@ -25,6 +25,8 @@ except ModuleNotFoundError:
 # one names GeoAgentPro's bridge tool explicitly. Both are kept below.
 from .config import (
     AGENT_PROFILE, AGENT_RESULT_DIR, state, ctrl, FIELD, agent_enabled)
+# Every user-visible string, in English and in Russian; --ru picks the language.
+from .agent_text import TEXT
 
 # GeoAgent langgraph server (started by app.py with --agent).
 AGENT_URL = "http://127.0.0.1:2024"
@@ -57,14 +59,6 @@ _thread_id = None
 # The audience here is reservoir engineers, not developers, so the card leads
 # with a plain sentence and shows the raw argument underneath.
 
-# arg key -> (plain-language headline, field label, render as a code block)
-_APPROVAL_ARGS = {
-    "Command": ("GeoAgent хочет выполнить команду в терминале", "Команда", True),
-    "Code": ("GeoAgent хочет выполнить Julia-код", "Код", True),
-    "Filepath": ("GeoAgent хочет перезаписать файл", "Файл", False),
-    "Query": ("GeoAgent уточняет поисковый запрос", "Запрос", False),
-}
-
 
 def _extract_interrupt(part):
     """Return the HumanInterrupt dict of an ``__interrupt__`` event, else None."""
@@ -88,10 +82,10 @@ def _build_approval(request):
     raw_args = action_request.get("args") or {}
     config = request.get("config") or {}
 
-    headline = "GeoAgent просит подтверждение"
+    headline = TEXT["approval_headline"]
     fields = []
     for key, value in raw_args.items():
-        summary, label, code_block = _APPROVAL_ARGS.get(key, (None, key, False))
+        summary, label, code_block = TEXT["approval_args"].get(key, (None, key, False))
         if summary and len(fields) == 0:
             headline = summary
         fields.append(
@@ -141,19 +135,6 @@ def _extract_ai_text(part):
     return ""
 
 
-# Tool call -> the line shown in the chat while it runs. Anything not listed here
-# passes silently; the agent narrates it in its own reply.
-_TOOL_NOTICES = {
-    "run_simulation_in_geoview":
-        "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять несколько минут…",
-    "load_model_in_geoview": "📂 Загружаю модель в GeoView…",
-    "prepare_optimization_in_geoview": "📝 Заполняю форму оптимизации…",
-    # GeoAgentPro computes in its own process instead of pressing GeoView's button.
-    "simulate_reservoir_for_geoview":
-        "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять несколько минут…",
-}
-
-
 def _tool_notice(part):
     """Return the status line for a tool call in this chunk, or '' if there is none."""
     data = getattr(part, "data", None)
@@ -162,9 +143,10 @@ def _tool_notice(part):
     msg = data[0]
     if not isinstance(msg, dict):
         return ""
+    notices = TEXT["tool_notices"]
     for call in msg.get("tool_calls") or []:
-        if isinstance(call, dict) and call.get("name") in _TOOL_NOTICES:
-            return _TOOL_NOTICES[call["name"]]
+        if isinstance(call, dict) and call.get("name") in notices:
+            return notices[call["name"]]
     return ""
 
 
@@ -183,21 +165,24 @@ def _append_message(role, text):
 def _model_summary():
     "Describe the loaded model from the values the Info tab already computes."
     if FIELD.get("model") is None or not state.loadedModelPath:
-        return "Модель не загружена."
+        return TEXT["no_model"]
 
-    lines = [f"Загруженная модель: {state.loadedModelPath}"]
+    lines = [TEXT["loaded_model"].format(path=state.loadedModelPath)]
     if state.dimens and any(state.dimens):
         nx, ny, nz = state.dimens
         lines.append(
-            f"Сетка: {nx}x{ny}x{nz}, ячеек всего {state.total_cells}, "
-            f"активных {state.active_cells}"
+            TEXT["grid"].format(
+                nx=nx, ny=ny, nz=nz,
+                total=state.total_cells, active=state.active_cells,
+            )
         )
     if state.fluids:
-        lines.append(f"Фазы: {', '.join(state.fluids)}")
+        lines.append(TEXT["phases"].format(phases=", ".join(state.fluids)))
     if state.startDate and state.lastDate:
         lines.append(
-            f"Даты: с {state.startDate} по {state.lastDate}, "
-            f"шагов {state.max_timestep}"
+            TEXT["dates"].format(
+                start=state.startDate, last=state.lastDate, steps=state.max_timestep
+            )
         )
 
     try:
@@ -206,17 +191,17 @@ def _model_summary():
         names = []
     if names:
         shown = ", ".join(names[:12]) + (" …" if len(names) > 12 else "")
-        lines.append(f"Скважин: {len(names)} ({shown})")
+        lines.append(TEXT["wells_named"].format(count=len(names), names=shown))
     elif state.num_wells:
-        lines.append(f"Скважин: {state.num_wells}")
+        lines.append(TEXT["wells_count"].format(count=state.num_wells))
 
     try:
         attributes = list(FIELD["model"].states.attributes)
     except Exception:  # noqa: BLE001
         attributes = []
     lines.append(
-        f"Результаты расчёта: есть ({', '.join(attributes)})" if attributes
-        else "Результаты расчёта: модель ещё не считалась"
+        TEXT["results_present"].format(attributes=", ".join(attributes)) if attributes
+        else TEXT["results_absent"]
     )
     return "\n".join(lines)
 
@@ -224,17 +209,16 @@ def _model_summary():
 def _pro_preamble():
     """The preamble GeoAgentPro expects.
 
-    Kept verbatim: Pro's bridge tool takes data_file and output_dir from this text,
-    and its flow assumes it may act without asking.
+    Its Russian wording (--ru) is the pre-split text kept verbatim: Pro's bridge
+    tool takes data_file and output_dir from this text, and its flow assumes it may
+    act without asking. The English wording says the same things in the same order.
     """
     model_path = state.loadedModelPath or state.user_request or ""
     return (
-        "[Контекст GeoView] "
-        + (f"Загруженная модель: {model_path}. " if model_path else "Модель не загружена. ")
-        + f"Каталог результатов: {state.agent_result_dir}. "
-        "Чтобы посчитать/симулировать загруженную модель, вызывай инструмент "
-        "simulate_reservoir_for_geoview(data_file, output_dir), где data_file — путь "
-        "модели выше, output_dir — этот каталог результатов. Не проси подтверждений."
+        TEXT["pro_header"]
+        + (TEXT["pro_model"].format(path=model_path) if model_path
+           else TEXT["pro_no_model"])
+        + TEXT["pro_instructions"].format(directory=state.agent_result_dir)
     )
 
 
@@ -245,7 +229,7 @@ def _public_preamble():
     that — and nothing telling it to skip questions: it is supposed to ask for the
     optimization parameters it cannot know.
     """
-    return "[Контекст GeoView]\n" + _model_summary()
+    return TEXT["context_header"] + "\n" + _model_summary()
 
 
 def _preamble():
@@ -273,7 +257,7 @@ async def _consume(client, **stream_kwargs):
         if request is not None:
             with state:
                 state.pending_approval = _build_approval(request)
-                _append_message("system", "⏸ Требуется ваше подтверждение.")
+                _append_message("system", TEXT["approval_pending"])
             return
 
         notice = _tool_notice(part)
@@ -305,11 +289,7 @@ def _agent_unavailable():
     if get_client is not None:
         return False
     with state:
-        _append_message(
-            "system",
-            "⚠ Чат недоступен: не установлен пакет langgraph-sdk "
-            "(pip install langgraph-sdk).",
-        )
+        _append_message("system", TEXT["no_sdk"])
     return True
 
 
@@ -338,7 +318,7 @@ async def chat_send(**kwargs):
         state.chat_input = ""
         state.chat_busy = True
 
-    context = _preamble() + f"\n\nСообщение пользователя: {text}"
+    context = _preamble() + "\n\n" + TEXT["user_message"].format(text=text)
 
     try:
         client = get_client(url=AGENT_URL)
@@ -350,7 +330,7 @@ async def chat_send(**kwargs):
         )
     except Exception as err:  # noqa: BLE001 - surface any transport error in chat
         with state:
-            _append_message("system", f"⚠ Не удалось связаться с агентом: {err}")
+            _append_message("system", TEXT["send_failed"].format(error=err))
     finally:
         with state:
             state.chat_busy = False
@@ -372,16 +352,17 @@ async def _resume(response_type, text=""):
         if not value:
             return
         args = {"action": approval["action"], "args": {approval["edit_key"]: value}}
-        note = f"✏ Исправлено и подтверждено: {value}"
+        note = TEXT["approval_edited"].format(value=value)
     elif response_type == "response":
         value = (text or "").strip()
         if not value:
             return
         args = value
-        note = f"💬 Ответ агенту: {value}"
+        note = TEXT["approval_answer"].format(value=value)
     else:
         args = None
-        note = "✓ Подтверждено." if response_type == "accept" else "✗ Отклонено."
+        note = (TEXT["approval_accepted"] if response_type == "accept"
+                else TEXT["approval_rejected"])
 
     with state:
         state.pending_approval = None
@@ -396,7 +377,7 @@ async def _resume(response_type, text=""):
         )
     except Exception as err:  # noqa: BLE001 - surface any transport error in chat
         with state:
-            _append_message("system", f"⚠ Не удалось продолжить работу агента: {err}")
+            _append_message("system", TEXT["resume_failed"].format(error=err))
     finally:
         with state:
             state.chat_busy = False
@@ -429,10 +410,7 @@ def _apply_field_states(result):
     from .home import update_dynamics
 
     if FIELD.get("model") is None or state.loadedModelPath is None:
-        _append_message(
-            "system",
-            "⚠ Расчёт готов, но в GeoView не загружена модель — сначала нажмите Load.",
-        )
+        _append_message("system", TEXT["states_no_model"])
         return
 
     run_dir = AGENT_RESULT_DIR / "results" / result["run_id"]
@@ -454,7 +432,7 @@ def _apply_field_states(result):
     update_dynamics(field)
 
     state.modelID += 1
-    _append_message("system", "✓ Расчёт подхватился во вкладке 3D view.")
+    _append_message("system", TEXT["states_applied"])
 
 
 # ── Commands from the agent ───────────────────────────────────────────────
@@ -468,15 +446,15 @@ def _apply_load_model(result):
     "Open the model the agent picked."
     data_file = result.get("data_file")
     if not data_file:
-        _append_message("system", "⚠ Агент не указал, какую модель открыть.")
+        _append_message("system", TEXT["load_no_path"])
         return None
     if state.loading:
-        _append_message("system", "⚠ GeoView уже загружает модель — запрос пропущен.")
+        _append_message("system", TEXT["load_busy"])
         return None
 
     state.user_request = data_file
     state.activeTab = "home"
-    _append_message("system", f"📂 Открываю модель: {data_file}")
+    _append_message("system", TEXT["load_started"].format(path=data_file))
     return ctrl.load_file_async
 
 
@@ -484,17 +462,13 @@ def _apply_run_simulation(result):
     "Press Simulate for the agent."
     _ = result
     if FIELD.get("model") is None or state.loadedModelPath is None:
-        _append_message(
-            "system", "⚠ Расчёт невозможен: в GeoView не загружена модель."
-        )
+        _append_message("system", TEXT["simulate_no_model"])
         return None
     if state.simulating:
-        _append_message("system", "⚠ Расчёт уже идёт — запрос пропущен.")
+        _append_message("system", TEXT["simulate_busy"])
         return None
 
-    _append_message(
-        "system", "▶ Запускаю расчёт — результат появится во вкладке 3D view."
-    )
+    _append_message("system", TEXT["simulate_started"])
     return ctrl.simulate_async
 
 
@@ -515,18 +489,13 @@ def _apply_optimization_setup(result):
     params = result.get("params") or {}
     missing = [key for key in _OPT_PARAM_KEYS if params.get(key) is None]
     if missing:
-        _append_message(
-            "system", f"⚠ В параметрах оптимизации не хватает полей: {', '.join(missing)}"
-        )
+        _append_message("system", TEXT["opt_missing"].format(fields=", ".join(missing)))
         return None
 
     for key in _OPT_PARAM_KEYS:
         setattr(state, f"opt_{key}", params[key])
     state.activeTab = "opt"
-    _append_message(
-        "system",
-        "📝 Форма оптимизации заполнена — проверьте значения и нажмите Optimize.",
-    )
+    _append_message("system", TEXT["opt_filled"])
     return None
 
 
@@ -536,7 +505,7 @@ def apply_result(result):
     Returns a callable to invoke once the state lock is released, or None.
     """
     if result.get("status") != "ok":
-        _append_message("system", "⚠ " + result.get("message", "Ошибка расчёта."))
+        _append_message("system", "⚠ " + result.get("message", TEXT["result_failed"]))
         return None
 
     handlers = {
@@ -550,7 +519,7 @@ def apply_result(result):
     handler = handlers.get(result.get("type"))
     if handler is None:
         _append_message(
-            "system", f"⚠ Неизвестный тип результата: {result.get('type')}"
+            "system", TEXT["result_unknown"].format(type=result.get("type"))
         )
         return None
     return handler(result)
@@ -601,7 +570,7 @@ def render_chat_fab():
         ):
             vuetify.VIcon("mdi-robot-happy-outline", size="large")
             vuetify.VTooltip(
-                text="Чат с GeoAgent", activator="parent", location="left"
+                text=TEXT["fab_tooltip"], activator="parent", location="left"
             )
 
 
@@ -609,7 +578,7 @@ def render_approval_card():
     """Pending-approval card: what the agent wants to do, and the answer buttons.
 
     Deliberately not a chat bubble — an irreversible action must not look like
-    conversation. "Отклонить" comes first so the safe answer is the easy one,
+    conversation. The reject button comes first so the safe answer is the easy one,
     and the raw argument is always shown, never only the headline.
     """
     with vuetify.VCard(
@@ -643,7 +612,7 @@ def render_approval_card():
             )
 
         html.Div(
-            "Отклонение не прерывает диалог: агент узнает об отказе и предложит другое.",
+            TEXT["approval_hint"],
             v_if="!pending_approval.allow_edit",
             style="font-size: 11px; opacity: 0.7;",
             classes="mt-1",
@@ -651,7 +620,7 @@ def render_approval_card():
 
         with html.Div(classes="d-flex ga-2 mt-2"):
             vuetify.VBtn(
-                "Отклонить",
+                TEXT["approval_reject"],
                 v_if="pending_approval.allow_ignore",
                 size="small",
                 variant="flat",
@@ -660,7 +629,7 @@ def render_approval_card():
                 click=ctrl.approval_reject,
             )
             vuetify.VBtn(
-                "Разрешить",
+                TEXT["approval_accept"],
                 v_if="pending_approval.allow_accept",
                 size="small",
                 variant="outlined",
@@ -697,7 +666,7 @@ def render_chat_panel():
                     v_if="chat_messages.length === 0",
                     classes="text-center text-medium-emphasis mt-4",
                 ):
-                    html.Div("Спросите агента или попросите посчитать загруженную модель.")
+                    html.Div(TEXT["empty_state"])
                 with html.Div(
                     v_for="msg, i in chat_messages",
                     key="i",
@@ -730,14 +699,16 @@ def render_chat_panel():
                 # starting a second run, so the placeholder has to say so —
                 # a silently repurposed input is how people approve the wrong
                 # thing.
+                # !r quotes and escapes each translation the way a JS string
+                # literal needs, so an apostrophe cannot break the expression.
                 vuetify.VTextField(
                     v_model=("chat_input",),
                     placeholder=(
                         "pending_approval "
                         "? (pending_approval.allow_edit "
-                        "? 'Исправьте значение и нажмите Enter…' "
-                        ": 'Напишите агенту, что сделать иначе…') "
-                        ": 'Напишите сообщение…'",
+                        f"? {TEXT['input_placeholder_edit']!r} "
+                        f": {TEXT['input_placeholder_respond']!r}) "
+                        f": {TEXT['input_placeholder']!r}",
                     ),
                     density="compact",
                     variant="outlined",

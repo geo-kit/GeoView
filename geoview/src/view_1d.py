@@ -6,7 +6,6 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 from trame.widgets import trame, html, plotly, vuetify3 as vuetify
-from trame.decorators import trigger
 
 from .config import state, ctrl, FIELD
 

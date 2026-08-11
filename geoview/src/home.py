@@ -5,7 +5,6 @@ from uuid import uuid4
 import asyncio
 import vtk
 import numpy as np
-import pandas as pd
 
 from vtkmodules.vtkRenderingCore import (
     vtkActor,
