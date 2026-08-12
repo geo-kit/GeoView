@@ -1,3 +1,7 @@
+### 🌐 Multi-Language Support
+
+**English** | [Русский](./translations/ru/README.md)
+
 # GeoView
 
 Web application for simulation and visualization of reservoir models.
@@ -56,7 +60,7 @@ Script writing:
 
 ## Performance
 
-Loading time and memory usage for benchmark models in the [benchmarks]([https://github.com/geo-kit/GeoView/benchmarks](https://github.com/geo-kit/GeoView/tree/main/benchmarks)) directory measured on a PC with Intel Core Ultra 7, 3.9GHz, 64Gb CPU:
+Loading time and memory usage for benchmark models in the [benchmarks](./benchmarks) directory measured on a PC with Intel Core Ultra 7, 3.9GHz, 64Gb CPU:
 
 | Number of cells | Loading time | Memory usage |
 |-------|---------|---------|
@@ -136,6 +140,11 @@ wells, phases, whether results exist), or ask the agent to find and open a model
 run the simulation, or fill in the optimization form. It fills the form and opens
 the tab; starting the optimization stays with you.
 
+Asking the agent to describe the open model, simulate it, and set up an
+optimization run:
+
+<img src="static/geoagent_demo.gif" width="50%"/>
+
 When the application is running, you can click on the help icon in
 the upper right corner to read a brief description of the page. 
 Hover over buttons and icons to see a tooltip with textual information
@@ -191,7 +200,7 @@ be based on the `GeoCode` framework
 [https://github.com/geo-kit/GeoCode](https://github.com/geo-kit/GeoCode).
 Read the [documentation](https://geo-kit.github.io/GeoCode/)
 and see
-[examples](https://github.com/geo-kit/GeoCode/blob/main/tutorials) 
+[examples](https://github.com/geo-kit/GeoCode/tree/main/notebooks)
 in the `GeoCode` repository to prepare a script.
 
 ## Next releases
