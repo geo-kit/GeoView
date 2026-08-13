@@ -35,6 +35,9 @@ After installation, run in the terminal:
 
 This should open a new tab in your default browser to http://localhost:8080/ with the application's home page.
 
+* **Contextual Help:** Click the help icon in the top-right corner for a brief description of the current page.
+* **Tooltips:** Hover over any button or icon to see its description.
+
 ## Start parameters
 
 You can add a few optional parameters to the application start command:
@@ -83,11 +86,6 @@ pull models.
 The chat button appears on the Home tab. Ask about the model currently open (grid,
 wells, phases, whether results exist), or ask the agent to find and open a model,
 run the simulation, or fill in the optimization form.
-
-When the application is running, you can click on the help icon in
-the upper right corner to read a brief description of the page. 
-Hover over buttons and icons to see a tooltip with textual information
-about them.
 
 ## Installation from source code
 
