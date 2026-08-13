@@ -8,7 +8,7 @@ A web application for reservoir simulation, optimization, and visualization, pow
 
 Lightweight. Modern. Open source.
 
-<img src="static/geoagent_demo.gif" width="60%"/>
+<img src="static/geoagent_demo.gif" width="70%"/>
 
 ## Features
 
