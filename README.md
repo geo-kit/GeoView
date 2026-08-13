@@ -18,6 +18,8 @@ Lightweight. Modern. Open source.
 * **Multi-Dimensional Visualization:** Rich interactive analytics for static and dynamic data (3D, 2D, and 1D)
 * **AI-Assisted Workflows:** Autonomous AI agent to streamline engineering tasks and data analysis.
 
+<img src="static/demo.gif" width="70%"/>
+
 
 ## Installation as a package
 
