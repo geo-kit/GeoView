@@ -4,83 +4,30 @@
 
 # GeoView
 
-Web application for simulation and visualization of reservoir models.
+A web application for reservoir simulation, optimization, and visualization, powered by an AI agent.
 
 Lightweight. Modern. Open source.
 
+<img src="static/geoagent_demo.gif" width="60%"/>
+
 ## Features
 
-Use the application to
-* read reservoir models given in ECLIPSE file format;
-* simulate models using JutulDarcy simulator;
-* view and explore static and dynamic data in 3D, 2D, and 1D;
-* export simulated data in ECLIPSE and CSV formats;
-* write and execute custom python scripts for reservoir transformations and calculations;
-* work locally or on a remote server.
+* **ECLIPSE Format Support:** Parsing of standard reservoir model files
+* **Advanced Simulation:** Fast and reliable modelling using the JutulDarcy simulator
+* **NPV Optimization:** Automated well schedule tuning to maximize discounted Net Present Value
+* **Multi-Dimensional Visualization:** Rich interactive analytics for static and dynamic data (3D, 2D, and 1D)
+* **AI-Assisted Workflows:** Autonomous AI agent to streamline engineering tasks and data analysis.
 
-Main page of the application:
-
-<img src="static/scene0.PNG" width="50%"/>
-
-Simulated reservoir dynamics in 3D:
-
-<img src="static/soil_deepfield.gif" width="50%"/>
-
-Filtering of grid cells and indication of well status (producing, injecting, inactive):
-
-<img src="static/scene1.PNG" width="50%"/>
-
-Selection of cells along well trajectories:
-
-<img src="static/scene_wells.PNG" width="50%"/>
-
-2D slice view:
-
-<img src="static/scene2.PNG" width="50%"/>
-
-Construction of a multiline 1D plot to compare dynamic properties:
-
-<img src="static/scene3.PNG" width="50%"/>
-
-Visualization of PVT and relative permeability tables:
-
-<img src="static/scene4.PNG" width="50%"/>
-
-Description of the reservoir model:
-
-<img src="static/scene5.PNG" width="50%"/>
-
-Script writing:
-
-<img src="static/scene6.PNG" width="50%"/>
-
-...and the results of its execution:
-
-<img src="static/scene7.PNG" width="50%"/>
-
-## Performance
-
-Loading time and memory usage for benchmark models in the [benchmarks](./benchmarks) directory measured on a PC with Intel Core Ultra 7, 3.9GHz, 64Gb CPU:
-
-| Number of cells | Loading time | Memory usage |
-|-------|---------|---------|
-| 1M | 23s | 0.5Gb |
-| 10M | 3m 49s | 2.6Gb |
-| 50M | 19m 26s | 10.3Gb |
 
 ## Installation as a package
 
-We recommend creating a new virtual environment with python 3.13 to install the project dependencies:
+Create a new virtual environment with python 3.13 and install the project dependencies:
 
-	conda create -n app python=3.13
+    pip install "git+https://github.com/geo-kit/geoview.git"
 
-Activate the new environment:
-
-	conda activate app
-
-To install the project dependencies, run in the terminal:
-
-    pip install "git+https://github.com/geo-kit/geocode.git"
+For reservoir simulation, install `Julia` from [https://julialang.org/downloads/](https://julialang.org/downloads/). Then install the JutulDarcy dependencies:
+ >
+ >     julia --project="$(python -c "import geocode, pathlib; print(pathlib.Path(geocode.__file__).parent / 'bin')")" -e "using Pkg; Pkg.instantiate()"
 
 After installation, run in the terminal:
 
@@ -88,20 +35,18 @@ After installation, run in the terminal:
 
 This should open a new tab in your default browser to http://localhost:8080/ with the application's home page.
 
+## Start parameters
+
 You can add a few optional parameters to the application start command:
-* --server - use to prevent a new tab from opening in the browser
-* --app - use to launch the application in a separate window rather than in the browser
-* --port 1234 - to change the default port 8080 to, e.g., 1234
-* --agent - start GeoAgent alongside the GeoView server
+* --server to prevent a new tab from opening in the browser
+* --app to launch the application in a separate window rather than in the browser
+* --port 1234 to change the default port 8080 to, e.g., 1234
+* --agent to start AI-agent
+* -vr or --vtk_remote to enable vtk remote rendering instead of the default local rendering using vtk webassembly.
 
-### GeoAgent model selection
+## Agent selection
 
-With `--agent`, GeoView selects the provider and model before either process
-starts. The selector supports LM Studio, Ollama, and OpenAI:
-
-```powershell
-python -m geoview.app --port 8080 --agent
-```
+When started with --agent flag, GeoView prompts the user to select an LLM provider and model. The available options are LM Studio, Ollama, Gemini, and OpenAI.
 
 For a non-interactive launch, provide both values explicitly:
 
@@ -137,71 +82,40 @@ pull models.
 
 The chat button appears on the Home tab. Ask about the model currently open (grid,
 wells, phases, whether results exist), or ask the agent to find and open a model,
-run the simulation, or fill in the optimization form. It fills the form and opens
-the tab; starting the optimization stays with you.
-
-Asking the agent to describe the open model, simulate it, and set up an
-optimization run:
-
-<img src="static/geoagent_demo.gif" width="50%"/>
+run the simulation, or fill in the optimization form.
 
 When the application is running, you can click on the help icon in
 the upper right corner to read a brief description of the page. 
 Hover over buttons and icons to see a tooltip with textual information
 about them.
 
- > [!NOTE]
- > Reservoir simulation requires [Julia](https://julialang.org/downloads/). Install the JutulDarcy driver dependencies once:
- >
- >     julia --project="$(python -c "import geocode, pathlib; print(pathlib.Path(geocode.__file__).parent / 'bin')")" -e "using Pkg; Pkg.instantiate()"
-
 ## Installation from source code
 
-Another option to run the application is to clone the entire repository:
+Clone the repositories into the same directory:
 
 	git clone https://github.com/geo-kit/geoview.git
-
-Addionally, you will need to clone the repository `GeoCode` into the same directory as the `GeoView`:
-
 	git clone https://github.com/geo-kit/geocode.git
+	git clone https://github.com/geo-kit/geoagent.git
 
-Install dependencties in both repositories using
+Install dependencies in `GeoCode` and `GeoView` repositories using
 
 	pip install -r requirements.txt
 
-Then navigate to the directory DeepField-app and run in the terminal
+For reservoir simulation, install `Julia` from [https://julialang.org/downloads/](https://julialang.org/downloads/). Then install the JutulDarcy dependencies:
+ >
+ >     julia --project=GeoCode/geocode/bin -e "using Pkg; Pkg.instantiate()"
+
+Then navigate to the directory GeoView and run in the terminal
 
 	python -m geoview.app
 
 to start the application.
 
- > [!NOTE]
- > Reservoir simulation requires [Julia](https://julialang.org/downloads/). Install the JutulDarcy driver dependencies once:
- >
- >     julia --project=../GeoCode/geocode/bin -e "using Pkg; Pkg.instantiate()"
-
-
-## Rendering options
-
-By default, rendering is performed locally in the user's browser using vtk webassembly functionality.
-To enable vtk remote rendering, use the `-vr` or `--vtk_remote` option when starting the application. 
-Note that the functionality of the application is slightly different between local and remote rendering.
 
 ## Open-source reservoir models
 
 An example reservoir model with dynamics simulation can be found in the `open_data` directory in the `GeoCode` repository [https://github.com/geo-kig/GeoCode](https://github.com/geo-kit/GeoCode),
 as well as links to a number of other open source models.
-
-## Script writing
-
-The application allows you to write and execute python scripts for
-reservoir model transformations and calculations. The script should 
-be based on the `GeoCode` framework 
-[https://github.com/geo-kit/GeoCode](https://github.com/geo-kit/GeoCode).
-Read the [documentation](https://geo-kit.github.io/GeoCode/)
-and see
-[examples](https://github.com/geo-kit/GeoCode/tree/main/notebooks)
-in the `GeoCode` repository to prepare a script.
 
 ## Next releases
 
@@ -214,6 +128,7 @@ We use
 * [trame](https://github.com/Kitware/trame) to build the web application
 * [GeoRead](https://github.com/geo-kit/GeoRead) to read and [GeoCode](https://github.com/geo-kit/GeoCode) to process reservoir models
 * [JutulDarcy](https://github.com/sintefmath/JutulDarcy.jl) for reservoir simulation
+* [GeoAgent](https://github.com/geo-kit/GeoAgent) for AI-agent assistance
 
 ## Citing
 
