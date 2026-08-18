@@ -13,15 +13,20 @@ setup(
     description='GeoView web application.',
     zip_safe=False,
     platforms='any',
+    python_requires='>=3.11',
     install_requires=[
         "GeoCode @ git+https://github.com/geo-kit/GeoCode",
         "trame",
         "trame-vuetify",
         "trame-vtk",
+        "trame-vtklocal",
         "trame-components",
         "trame-matplotlib",
         "trame-plotly",
-        "plotly"
+        "plotly",
+        "vtk>=9.4",
+        "pywebview>=3.4",
+        "langgraph-sdk"
     ],
     entry_points={
     'console_scripts': [
@@ -39,6 +44,8 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
         'Topic :: Scientific/Engineering'
     ],
 )

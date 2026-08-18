@@ -23,7 +23,7 @@ server.cli.add_argument(
 )
 server.cli.add_argument(
     "--agent-provider",
-    choices=("lmstudio", "ollama", "gemini", "openai"),
+    choices=("lmstudio", "ollama", "openai"),
     help="model provider for GeoAgent (prompted when omitted interactively)",
 )
 server.cli.add_argument(

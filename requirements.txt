@@ -1,10 +1,11 @@
 trame
 trame-vuetify
 trame-vtk
+trame-vtklocal
 trame-components
+trame-matplotlib
 trame-plotly
 plotly
+vtk>=9.4
 pywebview>=3.4
-trame-vtklocal
 langgraph-sdk
---extra-index-url https://wheels.vtk.org vtk==9.4.0rc2

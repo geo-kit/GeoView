@@ -21,13 +21,6 @@ PROVIDERS = {
         "base_env": ("OLLAMA_BASE_URL", "OLLAMA_HOST"),
         "key_env": (),
     },
-    "gemini": {
-        "label": "Google Gemini API",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta",
-        "models_path": "/models",
-        "base_env": (),
-        "key_env": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
-    },
     "openai": {
         "label": "OpenAI API",
         "base_url": "https://api.openai.com/v1",
@@ -64,8 +57,6 @@ def _list_models(provider, base_url, api_key, opener=urllib.request.urlopen):
     headers = {"Accept": "application/json"}
     if provider == "openai":
         headers["Authorization"] = f"Bearer {api_key}"
-    elif provider == "gemini":
-        headers["x-goog-api-key"] = api_key
 
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}{spec['models_path']}", headers=headers
@@ -78,16 +69,10 @@ def _list_models(provider, base_url, api_key, opener=urllib.request.urlopen):
             f"Could not list models from {spec['label']} at {base_url}: {error}"
         ) from None
 
-    if provider in ("lmstudio", "openai"):
-        models = [item.get("id") for item in payload.get("data", [])]
-    elif provider == "ollama":
+    if provider == "ollama":
         models = [item.get("name") for item in payload.get("models", [])]
     else:
-        models = [
-            item.get("name", "").removeprefix("models/")
-            for item in payload.get("models", [])
-            if "generateContent" in item.get("supportedGenerationMethods", [])
-        ]
+        models = [item.get("id") for item in payload.get("data", [])]
     return sorted({model for model in models if model})
 
 
