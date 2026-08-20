@@ -20,56 +20,6 @@ Lightweight. Modern. Open source.
 
 <img src="static/demo.gif" width="70%"/>
 
-Main page of the application:
-
-<img src="static/scene0.PNG" width="50%"/>
-
-Simulated reservoir dynamics in 3D:
-
-<img src="static/soil_deepfield.gif" width="50%"/>
-
-Filtering of grid cells and indication of well status (producing, injecting, inactive):
-
-<img src="static/scene1.PNG" width="50%"/>
-
-Selection of cells along well trajectories:
-
-<img src="static/scene_wells.PNG" width="50%"/>
-
-2D slice view:
-
-<img src="static/scene2.PNG" width="50%"/>
-
-Construction of a multiline 1D plot to compare dynamic properties:
-
-<img src="static/scene3.PNG" width="50%"/>
-
-Visualization of PVT and relative permeability tables:
-
-<img src="static/scene4.PNG" width="50%"/>
-
-Description of the reservoir model:
-
-<img src="static/scene5.PNG" width="50%"/>
-
-Script writing:
-
-<img src="static/scene6.PNG" width="50%"/>
-
-...and the results of its execution:
-
-<img src="static/scene7.PNG" width="50%"/>
-
-## Performance
-
-Loading time and memory usage for benchmark models in the [benchmarks](./benchmarks) directory measured on a PC with Intel Core Ultra 7, 3.9GHz, 64Gb CPU:
-
-| Number of cells | Loading time | Memory usage |
-|-------|---------|---------|
-| 1M | 23s | 0.5Gb |
-| 10M | 3m 49s | 2.6Gb |
-| 50M | 19m 26s | 10.3Gb |
-
 ## Requirements
 
 | | Needed for | Note |
