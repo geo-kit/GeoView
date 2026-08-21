@@ -210,7 +210,7 @@ python -m geoview.app --agent `
 * [trame](https://github.com/Kitware/trame) для создания веб-приложения
 * [GeoRead](https://github.com/geo-kit/GeoRead) для чтения и [GeoCode](https://github.com/geo-kit/GeoCode) для обработки моделей пластов
 * [JutulDarcy](https://github.com/sintefmath/JutulDarcy.jl) для моделирования пластов
-* [GeoAgent](https://github.com/geo-kit/GeoAgent) для помощи ИИ-агента
+* [GeoAgent](https://github.com/geo-kit/GeoAgent) для работы ИИ-агента
 
 ## Цитирование
 
