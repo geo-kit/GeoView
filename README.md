@@ -24,7 +24,7 @@ Lightweight. Modern. Open source.
 
 | | Needed for | Note |
 |---|---|---|
-| Python 3.13 | everything | 3.11 and 3.12 also work; 3.13 is what we test |
+| Python >=3.13 | everything |  |
 | `git` on `PATH` | everything | GeoCode and GeoRead are installed from GitHub, not from PyPI |
 | [Julia](https://julialang.org/downloads/) | reservoir simulation | only for the **Simulate** and **Optimize** buttons |
 | [uv](https://docs.astral.sh/uv/) | the AI chat | GeoAgent runs in its own virtual environment, see [Enabling the chat](#enabling-the-chat-geoagent) |
