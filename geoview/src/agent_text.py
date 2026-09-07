@@ -65,16 +65,11 @@ EN = {
     "results_absent": "Simulation results: the model has not been simulated yet",
     "user_message": "User message: {text}",
 
-    # ── Pro preamble (GeoAgentPro reads data_file/output_dir out of this text) ──
+    # ── Pro preamble ──
     "pro_header": "[GeoView context] ",
     "pro_model": "Loaded model: {path}. ",
     "pro_no_model": "No model is loaded. ",
-    "pro_instructions": (
-        "Results directory: {directory}. To compute/simulate the loaded model, call "
-        "the tool simulate_reservoir_for_geoview(data_file, output_dir), where "
-        "data_file is the model path above and output_dir is this results directory. "
-        "Do not ask for confirmations."
-    ),
+    "pro_instructions": "Results directory: {directory}. Answer in English.",
 
     # ── System lines ──
     "no_sdk": (
@@ -152,16 +147,11 @@ RU = {
     "results_absent": "Результаты расчёта: модель ещё не считалась",
     "user_message": "Сообщение пользователя: {text}",
 
-    # ── Pro preamble (kept verbatim: it is the pre-split text Pro expects) ──
+    # ── Pro preamble ──
     "pro_header": "[Контекст GeoView] ",
     "pro_model": "Загруженная модель: {path}. ",
     "pro_no_model": "Модель не загружена. ",
-    "pro_instructions": (
-        "Каталог результатов: {directory}. "
-        "Чтобы посчитать/симулировать загруженную модель, вызывай инструмент "
-        "simulate_reservoir_for_geoview(data_file, output_dir), где data_file — путь "
-        "модели выше, output_dir — этот каталог результатов. Не проси подтверждений."
-    ),
+    "pro_instructions": "Каталог результатов: {directory}. Отвечай по-русски.",
 
     # ── System lines ──
     "no_sdk": (

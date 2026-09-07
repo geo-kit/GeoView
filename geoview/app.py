@@ -18,8 +18,8 @@ except ModuleNotFoundError:
 
 from .src.agent_setup import configure_agent
 from .src.config import (
-    AGENT_DIR_NAME, AGENT_PROFILE, AGENT_RESULT_DIR, args, agent_enabled, server,
-    state, ctrl, jserver)
+    AGENT_DIR_NAME, AGENT_PROFILE, AGENT_RESULT_DIR, CHAT_LANG, args,
+    agent_enabled, server, state, ctrl, jserver)
 from .src.home import render_home, make_empty_grid
 from .src.view_3d import render_3d
 from .src.view_2d import render_2d
@@ -109,6 +109,7 @@ def _start_agent_process(qualified_model, environment):
         "PYTHONIOENCODING": "utf-8",
         "GEOAGENT_MODEL": qualified_model,
         "GEOVIEW_RESULT_DIR": str(AGENT_RESULT_DIR),
+        "GEOVIEW_CHAT_LANG": CHAT_LANG,
     }
 
     process = subprocess.Popen(
