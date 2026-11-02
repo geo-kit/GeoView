@@ -105,6 +105,10 @@ EN = {
     "load_no_path": "⚠ The agent did not say which model to open.",
     "load_busy": "⚠ GeoView is already loading a model — request skipped.",
     "load_started": "📂 Opening the model: {path}",
+    "load_done": "✅ GeoView opened the model: {path}",
+    "load_failed": "⚠ GeoView could not open the model: {error}",
+    "simulate_done": "✅ The run finished — results are in the 3D view tab.",
+    "simulate_failed": "⚠ The run failed: {error}",
     "simulate_no_model": "⚠ Cannot simulate: no model is loaded in GeoView.",
     "simulate_busy": "⚠ A run is already in progress — request skipped.",
     "simulate_started": (
@@ -204,6 +208,10 @@ RU = {
     "load_no_path": "⚠ Агент не указал, какую модель открыть.",
     "load_busy": "⚠ GeoView уже загружает модель — запрос пропущен.",
     "load_started": "📂 Открываю модель: {path}",
+    "load_done": "✅ GeoView открыл модель: {path}",
+    "load_failed": "⚠ GeoView не смог открыть модель: {error}",
+    "simulate_done": "✅ Расчёт завершён — результаты во вкладке 3D view.",
+    "simulate_failed": "⚠ Расчёт не удался: {error}",
     "simulate_no_model": "⚠ Расчёт невозможен: в GeoView не загружена модель.",
     "simulate_busy": "⚠ Расчёт уже идёт — запрос пропущен.",
     "simulate_started": (

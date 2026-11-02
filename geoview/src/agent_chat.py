@@ -10,6 +10,7 @@ the loaded model so the 3D view updates automatically.
 import asyncio
 import json
 import pickle
+from pathlib import Path
 
 from trame.widgets import html, vuetify3 as vuetify
 from trame.app import asynchronous
@@ -243,6 +244,28 @@ def _model_summary():
     return "\n".join(lines)
 
 
+def _project_line(deck, limit=50):
+    """The deck's folder is the project: relative paths are read from it.
+
+    Mirrored in GeoAgentPro's eval_runner.py (``project_line``); English on purpose,
+    like the tool output the agent reads.
+    """
+    folder = Path(deck).expanduser().parent
+    try:
+        names = sorted(
+            p.name + ("/" if p.is_dir() else "")
+            for p in folder.iterdir()
+            if not p.name.startswith(".")
+        )
+    except OSError:
+        return ""
+    more = f", … ({len(names) - limit} more)" if len(names) > limit else ""
+    return (
+        f"Project folder: {folder} (relative paths are read from here). "
+        f"Files: {', '.join(names[:limit])}{more}."
+    )
+
+
 def _pro_preamble():
     """The preamble GeoAgentPro expects.
 
@@ -252,10 +275,12 @@ def _pro_preamble():
     first sentences is kept as it was; the summary is appended after them.
     """
     model_path = state.loadedModelPath or state.user_request or ""
+    project = _project_line(model_path) if model_path else ""
     text = (
         TEXT["pro_header"]
         + (TEXT["pro_model"].format(path=model_path) if model_path
            else TEXT["pro_no_model"])
+        + (project + " " if project else "")
         + TEXT["pro_instructions"].format(directory=state.agent_result_dir)
     )
     if FIELD.get("model") is not None and state.loadedModelPath:
@@ -276,6 +301,7 @@ def _app_context():
         "language": CHAT_LANG,
         "user_text": (state.chat_input or "").strip(),
         "model_summary": _model_summary()[:600],
+        "recent_models": list(state.recentFiles or [])[-5:],
     }
 
 
@@ -299,69 +325,95 @@ async def _consume(client, **stream_kwargs):
 
     Shared by a fresh message and by resuming an approved one, so both render
     identically. Returns nothing: everything lands in trame state.
+
+    The Pro team agent checks its answer after writing it, so its text is held
+    behind a "…" bubble until the next event: a tool call or stage shows it, a
+    passing verdict shows it, a failing verdict drops it (the fixed answer
+    follows), and the end of the run shows whatever is left.
     """
     assistant_text = ""
     assistant_idx = None
     announced = set()
+    hold = AGENT_PROFILE == "pro"
 
-    async for part in client.runs.stream(
-        _thread_id,
-        AGENT_ASSISTANT_ID,
-        # "custom" carries the Pro agent's stage events; the public agent emits
-        # none, so the extra mode is harmless there.
-        stream_mode=["messages-tuple", "updates", "custom"],
-        # The server default is 25 graph steps (about 12 tool calls); the Pro
-        # agent's cheap probes (Phase 4d) need more before it answers.
-        config={"recursion_limit": 120},
-        **stream_kwargs,
-    ):
-        # The first event names the run; the Stop button needs it.
-        if (getattr(part, "event", "") or "") == "metadata":
-            data = getattr(part, "data", None)
-            if isinstance(data, dict) and data.get("run_id"):
-                with state:
-                    state.chat_run_id = str(data["run_id"])
-            continue
-
-        request = _extract_interrupt(part)
-        if request is not None:
-            with state:
-                state.pending_approval = _build_approval(request)
-                _append_message("system", TEXT["approval_pending"])
-            return
-
-        stage = _stage_line(part)
-        if stage:
-            assistant_text = ""
-            assistant_idx = None
-            with state:
-                _append_message("system", stage)
-            continue
-
-        notice = _tool_notice(part)
-        if notice is not None:
-            call_id, text = notice
-            if call_id not in announced:
-                announced.add(call_id)
-                # The tool call closes the assistant bubble; text after it starts a new one.
-                assistant_text = ""
-                assistant_idx = None
-                with state:
-                    _append_message("system", text)
-            continue
-
-        delta = _extract_ai_text(part)
-        if not delta:
-            continue
-        assistant_text += delta
-        with state:
-            if assistant_idx is None:
-                _append_message("assistant", assistant_text)
-                assistant_idx = len(state.chat_messages) - 1
-            else:
-                msgs = list(state.chat_messages)
+    def release(keep=True):
+        "Show (or drop) the held text; the next text starts a new bubble."
+        nonlocal assistant_text, assistant_idx
+        if assistant_idx is not None:
+            msgs = list(state.chat_messages)
+            if keep and assistant_text:
                 msgs[assistant_idx] = {"role": "assistant", "text": assistant_text}
-                state.chat_messages = msgs
+            else:
+                del msgs[assistant_idx]
+            state.chat_messages = msgs
+        assistant_text = ""
+        assistant_idx = None
+
+    try:
+        async for part in client.runs.stream(
+            _thread_id,
+            AGENT_ASSISTANT_ID,
+            # "custom" carries the Pro agent's stage events; the public agent emits
+            # none, so the extra mode is harmless there.
+            stream_mode=["messages-tuple", "updates", "custom"],
+            # The server default is 25 graph steps (about 12 tool calls); the Pro
+            # agent's cheap probes (Phase 4d) need more before it answers.
+            config={"recursion_limit": 120},
+            **stream_kwargs,
+        ):
+            # The first event names the run; the Stop button needs it.
+            if (getattr(part, "event", "") or "") == "metadata":
+                data = getattr(part, "data", None)
+                if isinstance(data, dict) and data.get("run_id"):
+                    with state:
+                        state.chat_run_id = str(data["run_id"])
+                continue
+
+            request = _extract_interrupt(part)
+            if request is not None:
+                with state:
+                    release()
+                    state.pending_approval = _build_approval(request)
+                    _append_message("system", TEXT["approval_pending"])
+                return
+
+            stage = _stage_line(part)
+            if stage:
+                data = getattr(part, "data", None) or {}
+                verdict_failed = data.get("stage") == "verify" and not stage.lstrip().startswith("✅")
+                with state:
+                    release(keep=not verdict_failed)
+                    _append_message("system", stage)
+                continue
+
+            notice = _tool_notice(part)
+            if notice is not None:
+                call_id, text = notice
+                if call_id not in announced:
+                    announced.add(call_id)
+                    # The tool call closes the assistant bubble; text after it starts a new one.
+                    with state:
+                        release()
+                        _append_message("system", text)
+                continue
+
+            delta = _extract_ai_text(part)
+            if not delta:
+                continue
+            assistant_text += delta
+            shown = "…" if hold else assistant_text
+            with state:
+                if assistant_idx is None:
+                    _append_message("assistant", shown)
+                    assistant_idx = len(state.chat_messages) - 1
+                elif not hold:
+                    msgs = list(state.chat_messages)
+                    msgs[assistant_idx] = {"role": "assistant", "text": shown}
+                    state.chat_messages = msgs
+    finally:
+        # an error mid-run must not leave the "…" bubble behind
+        with state:
+            release()
 
 
 def _agent_unavailable():
@@ -582,6 +634,7 @@ def _apply_load_model(result):
     state.user_request = data_file
     state.activeTab = "home"
     _append_message("system", TEXT["load_started"].format(path=data_file))
+    _report_when_done("loading")
     return ctrl.load_file_async
 
 
@@ -596,7 +649,34 @@ def _apply_run_simulation(result):
         return None
 
     _append_message("system", TEXT["simulate_started"])
+    _report_when_done("simulating")
     return ctrl.simulate_async
+
+
+@asynchronous.task
+async def _report_when_done(flag):
+    """Tell the chat how a load or a run the agent asked for ended.
+
+    The agent only presses GeoView's button and says "GeoView reports the outcome
+    in the chat": this is that report. ``flag`` is ``loading`` or ``simulating``.
+    """
+    # the controller starts after the state lock is released: wait for it to begin
+    for _ in range(20):
+        if state[flag]:
+            break
+        await asyncio.sleep(0.5)
+    while state[flag]:
+        await asyncio.sleep(1.0)
+    with state:
+        if flag == "loading":
+            if state.loadFailed:
+                _append_message("system", TEXT["load_failed"].format(error=state.errMessage))
+            elif state.loadedModelPath:
+                _append_message("system", TEXT["load_done"].format(path=state.loadedModelPath))
+        elif state.simulationFailed:
+            _append_message("system", TEXT["simulate_failed"].format(error=state.errMessage))
+        elif state.simulationResultDir:
+            _append_message("system", TEXT["simulate_done"])
 
 
 # Tool argument -> GeoView form field (state.opt_<key>), see optimization.OPT_FIELDS.
