@@ -1,10 +1,11 @@
 "Help page."
 from trame.widgets import html, vuetify3 as vuetify
+from .config import TAB
 
 
 def render_help():
     "Help page layout."
-    with vuetify.VCard(v_if="activeTab === 'home'",
+    with vuetify.VCard(v_if=f"{TAB} === 'home'",
         classes="pa-2 text-truncate",
         style='max-width: 80vw;'):
         vuetify.VCardTitle("Home page")
@@ -26,7 +27,7 @@ def render_help():
         	classes='pt-1'
         	)
 
-    with vuetify.VCard(v_if="activeTab === '3d'",
+    with vuetify.VCard(v_if=f"{TAB} === '3d'",
         classes="pa-2 text-truncate",
         style='max-width: 80vw;'):
         vuetify.VCardTitle("3D view")
@@ -57,7 +58,7 @@ def render_help():
             classes='pt-1'
             )
 
-    with vuetify.VCard(v_if="activeTab === '2d'",
+    with vuetify.VCard(v_if=f"{TAB} === '2d'",
         classes="pa-2 text-truncate",
         style='max-width: 80vw;'):
         vuetify.VCardTitle("2D view")
@@ -68,7 +69,7 @@ def render_help():
         	and control the appearance.",
         	style="text-wrap: auto")
 
-    with vuetify.VCard(v_if="activeTab === 'ts'",
+    with vuetify.VCard(v_if=f"{TAB} === 'ts'",
         classes="pa-2 text-truncate",
         style='max-width: 80vw;'):
         vuetify.VCardTitle("Timeseries")
@@ -91,7 +92,7 @@ def render_help():
             classes='pt-1'
             )
 
-    with vuetify.VCard(v_if="activeTab === 'pvt'",
+    with vuetify.VCard(v_if=f"{TAB} === 'pvt'",
         classes="pa-2 text-truncate",
         style='max-width: 80vw;'
         ):
@@ -103,7 +104,7 @@ def render_help():
         	value will be shown on the x-axis and set the second value using the slider.",
         	style="text-wrap: auto")
 
-    with vuetify.VCard(v_if="activeTab === 'opt'",
+    with vuetify.VCard(v_if=f"{TAB} === 'opt'",
         classes="pa-2",
         style='max-width: 80vw;'):
         vuetify.VCardTitle("Optimization")
@@ -152,7 +153,7 @@ def render_help():
             style="text-wrap: auto",
             classes='pt-1')
 
-    with vuetify.VCard(v_if="activeTab === 'info'",
+    with vuetify.VCard(v_if=f"{TAB} === 'info'",
         classes="pa-2 text-truncate",
         style='max-width: 80vw;'
         ):
@@ -160,7 +161,7 @@ def render_help():
         vuetify.VCardText("This tab summarizes general properties of the reservoir model.",
         	style="text-wrap: auto")
 
-    with vuetify.VCard(v_if="activeTab === 'script'",
+    with vuetify.VCard(v_if=f"{TAB} === 'script'",
         classes="pa-2 text-truncate",
         style='max-width: 80vw;'
         ):

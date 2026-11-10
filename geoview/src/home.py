@@ -135,7 +135,8 @@ def get_path_variants(user_request, **kwargs):
     else:
         arrived = False
     state.showDirList = (not state.initialDirState) & (not arrived)
-    paths = list(glob(user_request + "*")) if user_request is not None else []
+    base = user_request or USER_DIR + os.sep
+    paths = list(glob(base + "*"))
     if state.updateDirList:
         state.dirList = [p for p in paths if filter_path(p)]
 

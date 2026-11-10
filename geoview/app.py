@@ -18,8 +18,8 @@ except ModuleNotFoundError:
 
 from .src.agent_setup import configure_agent
 from .src.config import (
-    AGENT_DIR_NAME, AGENT_PROFILE, AGENT_RESULT_DIR, args, agent_enabled, server,
-    state, ctrl, jserver)
+    AGENT_DIR_NAME, AGENT_PROFILE, AGENT_RESULT_DIR, TAB, WIN, args, agent_enabled,
+    server, state, ctrl, jserver)
 from .src.home import render_home, make_empty_grid
 from .src.view_3d import render_3d
 from .src.view_2d import render_2d
@@ -31,6 +31,28 @@ from .src.help import render_help
 from .src.simulation import simulate
 from .src.agent_chat import render_chat_fab, render_chat_panel, watch_agent_results
 from .src.optimization import render_optimization
+from .src.detach import render_detach_support
+
+TABS = [('Optimization', 'opt'), ('3d view', '3d'), ('2d view', '2d'),
+        ('Timeseries', 'ts'), ('PVT/RP', 'pvt'), ('Info', 'info'), ('Script', 'script')]
+DETACHED = f"!!{WIN}"
+WIN_TABS = f"((windows[{WIN}] || {{}}).tabs || [])"
+
+
+def render_tab(label, value, v_if):
+    "Tab that can move to another window."
+    # tag div: Firefox does not drag a <button draggable>
+    with vuetify.VTab(value=value, tag="div", v_if=v_if, raw_attrs=[
+            'draggable="true"', 'tabindex="0"',
+            f'@dragstart="window.gv.dragStart(\'{value}\', $event)"',
+            f'@dragend="window.gv.dragEnd(\'{value}\', $event)"']):
+        html.Span(label)
+        vuetify.VIcon("mdi-open-in-new", size="x-small", classes="ml-1",
+                      raw_attrs=[f'@click.stop="window.gv.open(\'{value}\')"'])
+        vuetify.VTooltip(
+            text="Drag onto another GeoView window to move it there, below the "
+                 "tab bar for a new window, or click the icon",
+            activator="parent", location="bottom", open_delay=600)
 
 state.theme = 'light'
 state.sideBarColor = "grey-lighten-4"
@@ -171,18 +193,25 @@ with VAppLayout(server, theme=('theme',)) as layout:
     style = client.Style("body { background-color: white }")
     ctrl.update_style = style.update
     with layout.root:
+        render_detach_support()
         with vuetify.VAppBar(app=True, clipped_left=True, density="compact"):
             vuetify.VToolbarTitle("GeoView")
             vuetify.VSpacer()
-            with vuetify.VTabs(v_model=('activeTab', 'home')):
-                vuetify.VTab('Home', value="home")
-                vuetify.VTab('Optimization', value="opt")
-                vuetify.VTab('3d view', value="3d")
-                vuetify.VTab('2d view', value="2d")
-                vuetify.VTab('Timeseries', value="ts")
-                vuetify.VTab('PVT/RP', value="pvt")
-                vuetify.VTab('Info', value="info")
-                vuetify.VTab('Script', value="script")
+            with vuetify.VTabs(v_model=('activeTab', 'home'), v_if=f"!{DETACHED}"):
+                vuetify.VTab('Home', value='home')
+                for name, tab in TABS:
+                    render_tab(name, tab, f"!detachedTabs.includes('{tab}')")
+            with vuetify.VTabs(v_if=DETACHED, raw_attrs=[
+                    f':model-value="{TAB}"',
+                    f'@update:model-value="$event !== {TAB} && {WIN_TABS}.includes($event)'
+                    f' && trigger(\'win_select\', [{WIN}, $event])"']):
+                for name, tab in TABS:
+                    render_tab(name, tab, f"{WIN_TABS}.includes('{tab}')")
+            with vuetify.VBtn(icon=True, v_if=DETACHED,
+                              raw_attrs=['@click="window.gv.dock()"']):
+                vuetify.VIcon("mdi-dock-window")
+                vuetify.VTooltip(text="Return all tabs to the main window",
+                                 activator="parent", location="bottom")
             vuetify.VSpacer()
 
             with vuetify.VBtn(icon=True, click=ctrl.change_theme):
@@ -202,23 +231,23 @@ with VAppLayout(server, theme=('theme',)) as layout:
                     render_help()
 
         with vuetify.VMain():
-            with html.Div(v_if="activeTab === 'home'", classes="fill-height"):
+            with html.Div(v_if=f"{TAB} === 'home'", classes="fill-height"):
                 render_home()
                 render_chat_fab()
                 render_chat_panel()
-            with html.Div(v_if="activeTab === '3d'", classes="fill-height"):
+            with html.Div(v_if=f"{TAB} === '3d'", classes="fill-height"):
                 render_3d()
-            with html.Div(v_if="activeTab === '2d'", classes="fill-height"):
+            with html.Div(v_if=f"{TAB} === '2d'", classes="fill-height"):
                 render_2d()
-            with html.Div(v_if="activeTab === 'ts'", classes="fill-height"):
+            with html.Div(v_if=f"{TAB} === 'ts'", classes="fill-height"):
                 render_ts()
-            with html.Div(v_if="activeTab === 'pvt'", classes="fill-height"):
+            with html.Div(v_if=f"{TAB} === 'pvt'", classes="fill-height"):
                 render_pvt()
-            with html.Div(v_if="activeTab === 'info'"):
+            with html.Div(v_if=f"{TAB} === 'info'"):
                 render_info()
-            with html.Div(v_if="activeTab === 'script'"):
+            with html.Div(v_if=f"{TAB} === 'script'"):
                 render_script()
-            with html.Div(v_if="activeTab === 'opt'", classes="fill-height"):
+            with html.Div(v_if=f"{TAB} === 'opt'", classes="fill-height"):
                 render_optimization()
 
 
