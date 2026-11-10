@@ -9,6 +9,7 @@ the loaded model so the 3D view updates automatically.
 """
 import asyncio
 import logging
+from datetime import timedelta
 
 import numpy as np
 from trame.app import asynchronous
@@ -21,9 +22,8 @@ except ModuleNotFoundError:
     # Only the chat needs it; a plain GeoView launch must still start without it.
     get_client = None
 
-# AGENT_PROFILE picks which agent is on the other end of the socket, and with it
-# which preamble to send: the public one states GeoView's state as facts, the pro
-# one names GeoAgentPro's bridge tool explicitly. Both are kept below.
+# AGENT_PROFILE picks which agent is on the other end of the socket. The public
+# agent receives its legacy text preamble; GeoAgentPro receives structured state.
 from .agent_results import (
     DuplicateAgentResultError,
     InvalidAgentResultError,
@@ -35,6 +35,7 @@ from .agent_results import (
     load_optimization_result,
     read_latest_run_id,
     read_run_manifest,
+    source_model_id,
     to_spatial_states,
 )
 from .config import (
@@ -52,6 +53,24 @@ logger = logging.getLogger(__name__)
 
 # GeoAgent langgraph server (started by app.py with --agent).
 AGENT_URL = "http://127.0.0.1:2024"
+# connect, read, write and pool timeouts; a cold Jutul run can exceed five minutes.
+_AGENT_TIMEOUT = (5.0, 1800.0, 300.0, 5.0)
+
+_INJECTION_CONTROL_COLUMNS = {
+    "RATE": ("SURFACE_RATE", "sm3/day"),
+    "RESV": ("RESERVOIR_RATE", "m3/day"),
+    "BHP": ("BHP", "bar"),
+    "THP": ("THP", "bar"),
+}
+_PRODUCTION_CONTROL_COLUMNS = {
+    "ORAT": ("OIL_RATE", "sm3/day"),
+    "WRAT": ("WATER_RATE", "sm3/day"),
+    "GRAT": ("GAS_RATE", "sm3/day"),
+    "LRAT": ("SURFACE_LIQUID_RATE", "sm3/day"),
+    "RESV": ("RESERVOIR_LIQUID_RATE", "m3/day"),
+    "BHP": ("BHP", "bar"),
+    "THP": ("THP", "bar"),
+}
 
 (AGENT_RESULT_DIR / "results").mkdir(parents=True, exist_ok=True)
 
@@ -68,6 +87,8 @@ state.pending_approval = None
 
 # LangGraph conversation thread (kept across messages for dialogue context).
 _thread_id = None
+_announced_tool_call_ids = set()
+_forecast_notice_state = {"running": False, "result_pending": False}
 
 
 # ── Tool approvals (LangGraph interrupts) ─────────────────────────────────
@@ -86,6 +107,44 @@ _APPROVAL_ARGS = {
     "Code": ("GeoAgent хочет выполнить Julia-код", "Код", True),
     "Filepath": ("GeoAgent хочет перезаписать файл", "Файл", False),
     "Query": ("GeoAgent уточняет поисковый запрос", "Запрос", False),
+}
+
+_OPTIMIZATION_APPROVAL_LABELS = {
+    "model_name": "Модель",
+    "objective": "Цель",
+    "method": "Метод",
+    "baseline": "Базовый сценарий",
+    "well": "Скважина",
+    "horizon_months": "Горизонт, мес.",
+    "lower_bhp_bar": "Нижняя граница давления, бар",
+    "upper_bhp_bar": "Верхняя граница давления, бар",
+    "forecast_evaluations": "Лимит прогнозов",
+    "bounds_bar": "Границы давления по скважинам, бар",
+    "injection_rate_bounds_sm3_per_day": "Границы расхода закачки, ст. м³/сут",
+    "production_oil_rate_bounds_sm3_per_day": "Границы дебита нефти, ст. м³/сут",
+    "group_injection_limit": "Общий лимит закачки по группе, ст. м³/сут",
+    "objective_wells": "Скважины, чья добыча учитывается",
+    "economics": "Экономические параметры",
+    "max_iterations": "Лимит итераций",
+}
+_OPTIMIZATION_APPROVAL_VALUES = {
+    "field_cumulative_oil": "Накопленная добыча нефти по модели",
+    "group_cumulative_oil": "Накопленная добыча нефти по группе скважин",
+    "well_cumulative_oil": "Накопленная добыча нефти по выбранной скважине",
+    "bhp_grid": "Сравнение трёх забойных давлений",
+    "bhp_refine": "Сравнение давлений с уточнением около лучшего варианта",
+    "bhp_adjoint": "Градиентный поиск помесячных режимов (adjoint + L-BFGS)",
+    "discounted_npv": "Дисконтированный NPV",
+    "continue_final_scheduled_controls": "Продолжение текущих режимов",
+}
+_NPV_ECONOMICS_LABELS = {
+    "currency": "Валюта",
+    "oil_price": "Цена нефти за ст. м³",
+    "gas_price": "Цена газа за ст. м³",
+    "produced_water_cost": "Стоимость обработки добытой воды за ст. м³",
+    "water_injection_cost": "Стоимость закачки воды за ст. м³",
+    "gas_injection_cost": "Стоимость закачки газа за ст. м³",
+    "discount_rate_percent": "Ставка дисконтирования, % в год",
 }
 
 
@@ -111,10 +170,22 @@ def _build_approval(request):
     raw_args = action_request.get("args") or {}
     config = request.get("config") or {}
 
-    headline = "GeoAgent просит подтверждение"
+    preview_id = request.get("preview_id")
+    model_id = request.get("source_model_id")
+    optimization = isinstance(preview_id, str) and isinstance(model_id, str)
+    headline = (
+        "Подтвердите постановку оптимизации"
+        if optimization
+        else "GeoAgent просит подтверждение"
+    )
     fields = []
     for key, value in raw_args.items():
         summary, label, code_block = _APPROVAL_ARGS.get(key, (None, key, False))
+        if optimization:
+            label = _OPTIMIZATION_APPROVAL_LABELS.get(key, key)
+            value = _OPTIMIZATION_APPROVAL_VALUES.get(str(value), value)
+            if key == "economics" and isinstance(value, dict):
+                value = "\n".join(f"{_NPV_ECONOMICS_LABELS.get(name, name)}: {number}" for name, number in value.items())
         if summary and len(fields) == 0:
             headline = summary
         fields.append(
@@ -135,32 +206,34 @@ def _build_approval(request):
         "allow_edit": allow_edit,
         "edit_key": fields[0]["key"] if allow_edit else None,
         "edit_value": fields[0]["value"] if allow_edit else "",
+        **({"preview_id": preview_id, "source_model_id": model_id} if optimization else {}),
     }
 
 
 # ── Talking to the agent ──────────────────────────────────────────────────
 
 
-def _extract_ai_text(part):
-    """Return the text delta of an assistant message chunk, else ''."""
+def _extract_agent_text(part):
+    """Return only the final user-facing message from an agent update."""
     event = getattr(part, "event", "") or ""
     data = getattr(part, "data", None)
-    if not event.startswith("messages"):
+    if not event.startswith("updates") or not isinstance(data, dict):
         return ""
-    if not isinstance(data, (list, tuple)) or not data:
-        return ""
-    msg = data[0]
-    if not isinstance(msg, dict):
-        return ""
-    if msg.get("type") not in ("ai", "AIMessageChunk", "AIMessage"):
-        return ""
-    content = msg.get("content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(
-            b.get("text", "") for b in content if isinstance(b, dict)
-        )
+
+    for update in reversed(tuple(data.values())):
+        if not isinstance(update, dict):
+            continue
+        messages = update.get("messages") or []
+        if not messages or not isinstance(messages[-1], dict):
+            continue
+        message = messages[-1]
+        if message.get("type") not in ("ai", "AIMessage"):
+            continue
+        if message.get("tool_calls"):
+            continue
+        content = message.get("content", "")
+        if isinstance(content, str):
+            return content
     return ""
 
 
@@ -193,6 +266,9 @@ def _extract_workflow_status(part):
 
 # Tool call -> the line shown in the chat while it runs. Anything not listed here
 # passes silently; the agent narrates it in its own reply.
+_FORECAST_RUN_NOTICE = (
+    "🔧 Запускаю прогноз JutulDarcy — первый прогон может занять несколько минут…"
+)
 _TOOL_NOTICES = {
     "run_simulation_in_geoview":
         "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять несколько минут…",
@@ -201,26 +277,47 @@ _TOOL_NOTICES = {
     # GeoAgentPro computes in its own process instead of pressing GeoView's button.
     "simulate_reservoir_for_geoview":
         "🔧 Запускаю расчёт JutulDarcy — первый прогон может занять несколько минут…",
+    "run_forecast": _FORECAST_RUN_NOTICE,
 }
+
+_RESULT_APPLIED_NOTICE = "✓ Расчёт подхватился во вкладке 3D view."
 
 
 def _tool_notice(part):
-    """Return the status line for a tool call in this chunk, or '' if there is none."""
+    """Return the tool-call id, name and status line from this chunk, if present."""
     data = getattr(part, "data", None)
     if not isinstance(data, (list, tuple)) or not data:
-        return ""
+        return None, None, ""
     msg = data[0]
     if not isinstance(msg, dict):
-        return ""
+        return None, None, ""
     for call in msg.get("tool_calls") or []:
         if isinstance(call, dict) and call.get("name") in _TOOL_NOTICES:
-            return _TOOL_NOTICES[call["name"]]
-    return ""
+            call_id = call.get("id")
+            name = call["name"]
+            return (
+                call_id if isinstance(call_id, str) else None,
+                name,
+                _TOOL_NOTICES[name],
+            )
+    return None, None, ""
 
 
 def _append_message(role, text):
     "Append a chat message (reassign list so trame reacts)."
     state.chat_messages = state.chat_messages + [{"role": role, "text": text}]
+
+
+def _append_result_applied_notice(workflow_id):
+    """Keep the forecast completion notice behind its delayed start notice."""
+    if workflow_id != "reservoir_forecast":
+        _append_message("system", _RESULT_APPLIED_NOTICE)
+        return
+    if not _forecast_notice_state["running"]:
+        _forecast_notice_state["result_pending"] = True
+        return
+    _append_message("system", _RESULT_APPLIED_NOTICE)
+    _forecast_notice_state.update(running=False, result_pending=False)
 
 
 # ── Request context ───────────────────────────────────────────────────────
@@ -285,28 +382,70 @@ def _structured_model_snapshot():
         phases=state.fluids or (),
         start_date=state.startDate,
         end_date=state.lastDate,
+        schedule_end_date=_schedule_end_date(field),
         time_steps=state.max_timestep,
         well_names=well_names,
+        well_controls=_last_well_controls(field.wells),
         available_properties=state.field_attrs or (),
         state_attributes=state_attributes,
     )
 
 
-def _pro_preamble():
-    """The preamble GeoAgentPro expects.
+def _schedule_end_date(field):
+    """Return the final ECLIPSE schedule date from already loaded GeoCode data."""
+    runspec = field._data.get("RUNSPEC", ())
+    start = next((value for keyword, value in runspec if keyword == "START"), None)
+    if start is None:
+        return None
 
-    Kept verbatim: Pro's bridge tool takes data_file and output_dir from this text,
-    and its flow assumes it may act without asking.
-    """
-    model_path = state.loadedModelPath or state.user_request or ""
-    return (
-        "[Контекст GeoView] "
-        + (f"Загруженная модель: {model_path}. " if model_path else "Модель не загружена. ")
-        + f"Каталог результатов: {state.agent_result_dir}. "
-        "Чтобы посчитать/симулировать загруженную модель, вызывай инструмент "
-        "simulate_reservoir_for_geoview(data_file, output_dir), где data_file — путь "
-        "модели выше, output_dir — этот каталог результатов. Не проси подтверждений."
+    current = start
+    for keyword, value in field._data.get("SCHEDULE", ()):
+        if keyword == "DATES" and len(value):
+            current = value[-1]
+        elif keyword == "TSTEP":
+            steps = np.asarray(value, dtype=float)
+            if not np.isfinite(steps).all() or (steps < 0).any():
+                raise ValueError(
+                    "Schedule TSTEP values must be finite and non-negative"
+                )
+            current += timedelta(days=float(steps.sum()))
+    return current.strftime("%Y-%m-%d")
+
+
+def _last_well_controls(wells):
+    """Return the final loaded ECLIPSE control for each well."""
+    controls = {}
+    schedules = (
+        ("wconinje", "injection", _INJECTION_CONTROL_COLUMNS),
+        ("wconprod", "production", _PRODUCTION_CONTROL_COLUMNS),
     )
+    for attribute, role, columns in schedules:
+        table = getattr(wells, attribute, None)
+        if table is None or table.empty:
+            continue
+        if "DATE" in table.columns:
+            table = table.sort_values("DATE", kind="stable", na_position="first")
+        for _, row in table.iterrows():
+            well = str(row.get("WELL", "")).strip()
+            if not well:
+                continue
+            status = str(row.get("MODE", "OPEN")).strip().upper() or "OPEN"
+            control = str(row.get("CONTROL", "")).strip().upper()
+            value_column, unit = columns.get(control, (None, None))
+            value = row.get(value_column) if value_column else None
+            try:
+                value = float(value) if np.isfinite(value) else None
+            except (TypeError, ValueError):
+                value = None
+            controls[well] = {
+                "well": well,
+                "role": role,
+                "status": status,
+                "control": control or None,
+                "value": value,
+                "unit": unit,
+            }
+    return [controls[well] for well in sorted(controls)]
 
 
 def _public_preamble():
@@ -319,14 +458,9 @@ def _public_preamble():
     return "[Контекст GeoView]\n" + _model_summary()
 
 
-def _preamble():
-    "The context block prepended to every user message."
-    return _pro_preamble() if AGENT_PROFILE == "pro" else _public_preamble()
-
-
 def _graph_input(text):
-    if AGENT_GRAPH != "supervisor":
-        text = _preamble() + f"\n\nСообщение пользователя: {text}"
+    if AGENT_PROFILE != "pro" and AGENT_GRAPH != "supervisor":
+        text = _public_preamble() + f"\n\nСообщение пользователя: {text}"
         return {"messages": [{"role": "user", "content": text}]}
 
     trusted_inputs = {}
@@ -355,7 +489,6 @@ async def _consume(client, **stream_kwargs):
     Shared by a fresh message and by resuming an approved one, so both render
     identically. Returns nothing: everything lands in trame state.
     """
-    assistant_text = ""
     assistant_idx = None
     announced = set()
 
@@ -383,31 +516,40 @@ async def _consume(client, **stream_kwargs):
                 _append_message("system", status)
             continue
 
-        notice = _tool_notice(part)
-        if notice and notice not in announced:
-            announced.add(notice)
-            # The tool call closes the assistant bubble; text after it starts a new one.
-            assistant_text = ""
-            assistant_idx = None
+        tool_call_id, tool_name, notice = _tool_notice(part)
+        notice_key = tool_call_id or notice
+        if notice and notice_key not in announced:
+            announced.add(notice_key)
+            if tool_call_id in _announced_tool_call_ids:
+                continue
+            if tool_call_id is not None:
+                _announced_tool_call_ids.add(tool_call_id)
             with state:
                 _append_message("system", notice)
+                if tool_name == "run_forecast":
+                    _forecast_notice_state["running"] = True
+                    if _forecast_notice_state["result_pending"]:
+                        _append_message("system", _RESULT_APPLIED_NOTICE)
+                        _forecast_notice_state.update(
+                            running=False,
+                            result_pending=False,
+                        )
             continue
 
-        delta = (
+        answer = (
             _extract_supervisor_text(part)
             if AGENT_GRAPH == "supervisor"
-            else _extract_ai_text(part)
+            else _extract_agent_text(part)
         )
-        if not delta:
+        if not answer:
             continue
-        assistant_text += delta
         with state:
             if assistant_idx is None:
-                _append_message("assistant", assistant_text)
+                _append_message("assistant", answer)
                 assistant_idx = len(state.chat_messages) - 1
             else:
                 msgs = list(state.chat_messages)
-                msgs[assistant_idx] = {"role": "assistant", "text": assistant_text}
+                msgs[assistant_idx] = {"role": "assistant", "text": answer}
                 state.chat_messages = msgs
 
 
@@ -422,6 +564,14 @@ def _agent_unavailable():
             "(pip install langgraph-sdk).",
         )
     return True
+
+
+def _agent_client():
+    return get_client(url=AGENT_URL, timeout=_AGENT_TIMEOUT)
+
+
+def _error_detail(error):
+    return str(error).strip() or type(error).__name__
 
 
 @asynchronous.task
@@ -450,14 +600,19 @@ async def chat_send(**kwargs):
         state.chat_busy = True
 
     try:
-        client = get_client(url=AGENT_URL)
+        client = _agent_client()
         if _thread_id is None:
             thread = await client.threads.create()
             _thread_id = thread["thread_id"]
+            _announced_tool_call_ids.clear()
+            _forecast_notice_state.update(running=False, result_pending=False)
         await _consume(client, input=_graph_input(text))
     except Exception as err:  # noqa: BLE001 - surface any transport error in chat
+        logger.exception("GeoAgent request failed")
         with state:
-            _append_message("system", f"⚠ Не удалось связаться с агентом: {err}")
+            _append_message(
+                "system", f"⚠ Не удалось связаться с агентом: {_error_detail(err)}"
+            )
     finally:
         with state:
             state.chat_busy = False
@@ -474,7 +629,21 @@ async def _resume(response_type, text=""):
     if not approval or _agent_unavailable():
         return
 
-    if response_type == "edit":
+    preview_id = approval.get("preview_id")
+    loaded_model = state.loadedModelPath if preview_id else None
+    current_model_id = source_model_id(loaded_model) if loaded_model else None
+    if (
+        preview_id
+        and response_type != "ignore"
+        and current_model_id != approval["source_model_id"]
+    ):
+        response_type = "ignore"
+        args = None
+        note = "Модель сменилась. Запросите новый предпросмотр оптимизации."
+    elif response_type == "accept" and preview_id:
+        args = {"preview_id": preview_id, "source_model_id": current_model_id}
+        note = "✓ Отправлено подтверждение постановки."
+    elif response_type == "edit":
         value = (text or "").strip()
         if not value:
             return
@@ -497,13 +666,17 @@ async def _resume(response_type, text=""):
         _append_message("system", note)
 
     try:
-        client = get_client(url=AGENT_URL)
+        client = _agent_client()
         await _consume(
             client, command={"resume": [{"type": response_type, "args": args}]}
         )
     except Exception as err:  # noqa: BLE001 - surface any transport error in chat
+        logger.exception("GeoAgent resume failed")
         with state:
-            _append_message("system", f"⚠ Не удалось продолжить работу агента: {err}")
+            _append_message(
+                "system",
+                f"⚠ Не удалось продолжить работу агента: {_error_detail(err)}",
+            )
     finally:
         with state:
             state.chat_busy = False
@@ -583,7 +756,7 @@ def _apply_field_states(result):
 
     state.agent_active_result = staged.active_result_reference
     state.modelID += 1
-    _append_message("system", "✓ Расчёт подхватился во вкладке 3D view.")
+    _append_result_applied_notice(result.get("workflow_id"))
 
 
 def _apply_optimization_result(result):

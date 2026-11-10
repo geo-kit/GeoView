@@ -18,6 +18,7 @@ import pandas as pd
 
 SCHEMA_VERSION = 1
 WORKFLOW_ID = "baseline_reservoir_simulation"
+FIELD_STATE_WORKFLOW_IDS = frozenset({WORKFLOW_ID, "reservoir_forecast"})
 RESULT_TYPE = "field_states"
 OPTIMIZATION_WORKFLOW_ID = "reservoir_optimization"
 OPTIMIZATION_RESULT_TYPE = "optimization_result"
@@ -130,6 +131,8 @@ def build_model_snapshot(
     well_names: Sequence[str],
     available_properties: Sequence[str],
     state_attributes: Sequence[str],
+    well_controls: Sequence[Mapping[str, Any]] = (),
+    schedule_end_date: Any = None,
 ) -> dict[str, Any]:
     """Build the compact path-free model facts sent to the Supervisor."""
     dimensions = None
@@ -147,8 +150,23 @@ def build_model_snapshot(
         "phases": _safe_strings(phases),
         "start_date": str(start_date) if start_date else None,
         "end_date": str(end_date) if end_date else None,
+        "schedule_end_date": (
+            str(schedule_end_date) if schedule_end_date else None
+        ),
         "time_steps": _optional_non_negative_int(time_steps),
         "well_names": _safe_strings(well_names),
+        "well_controls": [
+            {
+                "well": item.get("well"),
+                "role": item.get("role"),
+                "status": item.get("status"),
+                "control": item.get("control"),
+                "value": item.get("value"),
+                "unit": item.get("unit"),
+            }
+            for item in well_controls
+            if isinstance(item, Mapping)
+        ],
         "available_properties": _safe_strings(available_properties),
         "state_attributes": _safe_strings(state_attributes),
     }
@@ -711,7 +729,7 @@ def _validate_manifest(
 ) -> dict[str, Any]:
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise InvalidAgentResultError("unsupported result schema_version")
-    if manifest.get("workflow_id") != WORKFLOW_ID:
+    if manifest.get("workflow_id") not in FIELD_STATE_WORKFLOW_IDS:
         raise InvalidAgentResultError("unexpected workflow_id")
     if manifest.get("status") != "ok":
         raise InvalidAgentResultError("field states result is not successful")
