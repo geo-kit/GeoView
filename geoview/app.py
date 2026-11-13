@@ -50,8 +50,8 @@ def render_tab(label, value, v_if):
         vuetify.VIcon("mdi-open-in-new", size="x-small", classes="ml-1",
                       raw_attrs=[f'@click.stop="window.gv.open(\'{value}\')"'])
         vuetify.VTooltip(
-            text="Drag onto another GeoView window to move it there, below the "
-                 "tab bar for a new window, or click the icon",
+            text="Drag onto another GeoView window to move it there, \
+            or drag below the tab bar or click the icon to open it in a new window.",
             activator="parent", location="bottom", open_delay=600)
 
 state.theme = 'light'
