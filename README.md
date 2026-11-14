@@ -16,9 +16,14 @@ Lightweight. Modern. Open source.
 * **Advanced Simulation:** Fast and reliable modelling using the JutulDarcy simulator
 * **NPV Optimization:** Automated well schedule tuning to maximize discounted Net Present Value
 * **Multi-Dimensional Visualization:** Rich interactive analytics for static and dynamic data (3D, 2D, and 1D)
-* **AI-Assisted Workflows:** Autonomous AI agent to streamline engineering tasks and data analysis.
+* **AI-Assisted Workflows:** Autonomous AI agent to streamline engineering tasks and data analysis
+* **Flexible workspace:** Simultaneous viewing in multiple windows or on multiple displays.
 
-<img src="static/demo.gif" width="70%"/>
+<p align="center">
+  <img src="static/demo.gif" width="400"/> 
+  <img src="static/view_tabs.gif" width="395"/>
+</p>
+
 
 ## Requirements
 

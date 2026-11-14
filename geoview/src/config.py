@@ -85,3 +85,6 @@ FIELD = {"actor": None,
          "data1d": {'states': [], 'wells': [], 'tables': []},
          "model": None,
          "model_copy": None}
+
+WIN = "(window.location.search.match(/[?&]win=(\\w+)/) || [])[1]"
+TAB = f"({WIN} ? (windows[{WIN}] || {{}}).active : activeTab)"
