@@ -20,8 +20,8 @@ Lightweight. Modern. Open source.
 * **Flexible workspace:** Simultaneous viewing in multiple windows or on multiple displays.
 
 <p align="center">
-  <img src="static/demo.gif" width="300"/> 
-  <img src="static/view_tabs.gif" width="295"/>
+  <img src="static/demo.gif" width="350"/> 
+  <img src="static/view_tabs.gif" width="345"/>
 </p>
 
 
