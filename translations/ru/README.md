@@ -20,8 +20,8 @@
 * **Гбкая организация рабочего пространства:** Возможность одновременной работы в нескольких окнах или на нескольких дисплеях.
 
 <p align="center">
-  <img src="static/demo.gif" width="400"/> 
-  <img src="static/view_tabs.gif" width="395"/>
+  <img src="/static/demo.gif" width="400"/> 
+  <img src="/static/view_tabs.gif" width="395"/>
 </p>
 
 
