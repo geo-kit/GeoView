@@ -41,6 +41,7 @@ state.emptyHistory = True
 state.errMessage = ''
 state.loadFailed = False
 state.loadedModelPath = None
+state.agent_active_result = None
 state.simulationResultDir = None
 state.simulationFailed = False
 state.modelID = 0
@@ -149,6 +150,8 @@ async def load_file_async():
         state.showDirList = False
         state.simulationFailed = False
         state.simulationResultDir = None
+        state.agent_active_result = None
+        _clear_agent_optimization_result()
 
     field = Field(state.user_request)
 
@@ -292,6 +295,25 @@ def fill_unsimulated(data):
     data[nan_t, nan_c] = means[nan_t]
     return data
 
+
+def _clear_agent_optimization_result():
+    """Clear only the source-bound agent optimization view on local state changes."""
+    if getattr(state, "opt_result_contract", None) != "agent_v1":
+        return
+    state.optResultReady = False
+    state.initScreen = True
+    state.opt_controls = []
+    state.opt_warnings = []
+    state.opt_result_message = ""
+    state.opt_result_contract = "manual_legacy"
+    try:
+        from .optimization import PLOTS
+
+        PLOTS["plot_opt"] = None
+        PLOTS["opt_df"] = None
+    except ImportError:
+        pass
+
 @asynchronous.task
 async def simulate_async():
     "Simulate async."
@@ -343,6 +365,8 @@ async def simulate_async():
     with state:
         state.modelID += 1
         state.simulationResultDir = results["result_dir"]
+        state.agent_active_result = None
+        _clear_agent_optimization_result()
         state.simulating = False
         state.simulationFailed = False
         state.errMessage = ''

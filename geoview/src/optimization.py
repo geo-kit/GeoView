@@ -1,20 +1,22 @@
 "Forecast BHP optimization page."
-import os
-import json
 import asyncio
+import json
+import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
-from trame.widgets import trame, plotly, vuetify3 as vuetify
-from trame.app import asynchronous
-
 from geocode.field.utils.misc import execute_julia_optimize
+from plotly.subplots import make_subplots
+from trame.app import asynchronous
+from trame.widgets import html, plotly, trame
+from trame.widgets import vuetify3 as vuetify
 
-from .config import state, ctrl
+from .agent_results import ValidatedOptimizationResult
+from .config import ctrl, state
 from .view_1d import CHART_STYLE
 
 # Only max iterations defaults to Jutul's unit_box_bfgs default; the user must
@@ -78,12 +80,24 @@ state.opt_n_wells_producer = 0
 state.opt_n_wells_injector = 0
 state.opt_n_wells_shut = 0
 state.opt_wall_time_s = 0.0
+state.opt_result_contract = "manual_legacy"
+state.opt_termination_reason = "not_reported"
+state.opt_optimizer_converged = False
+state.opt_candidate_feasible = False
+state.opt_candidate_improved = False
+state.opt_recommended_case = "baseline"
+state.opt_evaluations = 0
+state.opt_currency = "$"
+state.opt_improvement_available = True
+state.opt_warnings = []
+state.opt_controls = []
+state.opt_rate_unit = "m3/day"
 
 
 PLOTS = {"plot_opt": None, "opt_df": None}
 
 # Label -> production.csv column, for the per-well/field curve picker below the plot.
-OPT_SERIES = {
+LEGACY_OPT_SERIES = {
     "Oil rate (base)": "base_oil_rate_m3_day",
     "Oil rate (optimized)": "opt_oil_rate_m3_day",
     "Gas rate (base)": "base_gas_rate_m3_day",
@@ -93,7 +107,17 @@ OPT_SERIES = {
     "Water inj (base)": "base_water_inj_m3_day",
     "Water inj (optimized)": "opt_water_inj_m3_day",
 }
-state.opt_dataOptions = list(OPT_SERIES)
+AGENT_OPT_SERIES = {
+    "Oil rate (base)": "baseline_oil_production_sm3_per_day",
+    "Oil rate (optimized)": "candidate_oil_production_sm3_per_day",
+    "Gas rate (base)": "baseline_gas_production_sm3_per_day",
+    "Gas rate (optimized)": "candidate_gas_production_sm3_per_day",
+    "Water prod (base)": "baseline_water_production_sm3_per_day",
+    "Water prod (optimized)": "candidate_water_production_sm3_per_day",
+    "Water inj (base)": "baseline_water_injection_sm3_per_day",
+    "Water inj (optimized)": "candidate_water_injection_sm3_per_day",
+}
+state.opt_dataOptions = list(LEGACY_OPT_SERIES)
 state.opt_dataToShow = None
 state.opt_wellnames = ["Field"]
 state.opt_wellToShow = "Field"
@@ -110,14 +134,24 @@ def _has_production(df, columns):
 
 def _default_series(df):
     "Initial plot series: oil if present, otherwise gas."
-    oil = [
-        ("base_oil_rate_m3_day", "Oil (base)", None, "solid"),
-        ("opt_oil_rate_m3_day", "Oil (optimized)", None, "solid"),
-    ]
-    gas = [
-        ("base_gas_rate_m3_day", "Gas (base)", None, "solid"),
-        ("opt_gas_rate_m3_day", "Gas (optimized)", None, "solid"),
-    ]
+    if "baseline_oil_production_sm3_per_day" in df:
+        oil = [
+            ("baseline_oil_production_sm3_per_day", "Oil (base)", None, "solid"),
+            ("candidate_oil_production_sm3_per_day", "Oil (candidate)", None, "solid"),
+        ]
+        gas = [
+            ("baseline_gas_production_sm3_per_day", "Gas (base)", None, "solid"),
+            ("candidate_gas_production_sm3_per_day", "Gas (candidate)", None, "solid"),
+        ]
+    else:
+        oil = [
+            ("base_oil_rate_m3_day", "Oil (base)", None, "solid"),
+            ("opt_oil_rate_m3_day", "Oil (optimized)", None, "solid"),
+        ]
+        gas = [
+            ("base_gas_rate_m3_day", "Gas (base)", None, "solid"),
+            ("opt_gas_rate_m3_day", "Gas (optimized)", None, "solid"),
+        ]
     if _has_production(df, [column for column, *_ in oil]):
         return oil
     if _has_production(df, [column for column, *_ in gas]):
@@ -148,8 +182,127 @@ def _build_figure(df):
         legend={"x": 1.01},
     )
     fig.update_xaxes(title_text="Date")
-    fig.update_yaxes(title_text="Rate, m3/day")
+    unit = "sm3/day" if "baseline_oil_production_sm3_per_day" in df else "m3/day"
+    fig.update_yaxes(title_text=f"Rate, {unit}")
     return fig
+
+
+@dataclass(frozen=True)
+class StagedAgentOptimizationView:
+    figure: Any
+    timeseries: pd.DataFrame
+    controls: list[dict[str, Any]]
+    wells: list[str]
+    summary: dict[str, Any]
+    active_result_reference: dict[str, Any]
+
+
+def stage_agent_optimization_result(
+    result: ValidatedOptimizationResult,
+) -> StagedAgentOptimizationView:
+    """Prepare the complete optimization view without mutating Trame state."""
+    figure = _build_figure(result.timeseries)
+    controls = []
+    for row in result.controls.to_dict(orient="records"):
+        controls.append(
+            {
+                "period": int(row["period"]),
+                "well": str(row["well"]),
+                "role": str(row["role"]),
+                "candidate_bhp_bar": (
+                    None
+                    if pd.isna(row["candidate_bhp_bar"])
+                    else float(row["candidate_bhp_bar"])
+                ),
+                "lower_bound_bar": (
+                    None
+                    if pd.isna(row["lower_bound_bar"])
+                    else float(row["lower_bound_bar"])
+                ),
+                "upper_bound_bar": (
+                    None
+                    if pd.isna(row["upper_bound_bar"])
+                    else float(row["upper_bound_bar"])
+                ),
+            }
+        )
+    return StagedAgentOptimizationView(
+        figure=figure,
+        timeseries=result.timeseries.copy(deep=True),
+        controls=controls,
+        wells=sorted(result.timeseries["well"].unique()),
+        summary=result.summary,
+        active_result_reference=result.active_result_reference,
+    )
+
+
+def apply_staged_agent_optimization(view: StagedAgentOptimizationView) -> None:
+    """Atomically update the optimization tab; never touch reservoir field states."""
+    objective = view.summary["objective"]
+    optimized_controls = [
+        control for control in view.controls if control["candidate_bhp_bar"] is not None
+    ]
+    producer_wells = {
+        control["well"]
+        for control in optimized_controls
+        if control["role"] == "producer"
+    }
+    injector_wells = {
+        control["well"]
+        for control in optimized_controls
+        if control["role"] == "injector"
+    }
+    values = {
+        "activeTab": "opt",
+        "initScreen": False,
+        "optimizing": False,
+        "optimizationFailed": False,
+        "optResultReady": True,
+        "opt_errMessage": "",
+        "opt_base_npv": objective["baseline"],
+        "opt_opt_npv": objective["candidate"],
+        "opt_improvement": objective["relative_delta_pct"] or 0.0,
+        "opt_improvement_available": objective["relative_delta_pct"] is not None,
+        "opt_result_contract": "agent_v1",
+        "opt_termination_reason": view.summary["termination_reason"],
+        "opt_optimizer_converged": view.summary["optimizer_converged"],
+        "opt_candidate_feasible": view.summary["candidate_feasible"],
+        "opt_candidate_improved": view.summary["candidate_improved"],
+        "opt_recommended_case": view.summary["recommended_case"],
+        "opt_iterations": view.summary["iterations"],
+        "opt_evaluations": view.summary["evaluations"],
+        "opt_n_variables": len(optimized_controls),
+        "opt_n_wells_producer": len(producer_wells),
+        "opt_n_wells_injector": len(injector_wells),
+        "opt_n_wells_shut": 0,
+        "opt_wall_time_s": view.summary["wall_time_seconds"],
+        "opt_currency": objective["currency"],
+        "opt_warnings": list(view.summary["warnings"]),
+        "opt_controls": view.controls,
+        "opt_rate_unit": "sm3/day",
+        "opt_wellnames": ["Field", *view.wells],
+        "opt_wellToShow": "Field",
+        "opt_dataOptions": list(AGENT_OPT_SERIES),
+        "opt_result_message": (
+            "Validated agent optimization result. Candidate controls were not applied."
+        ),
+        "agent_active_result": view.active_result_reference,
+    }
+    previous = {name: getattr(state, name, None) for name in values}
+    previous_plot = PLOTS["plot_opt"]
+    previous_frame = PLOTS["opt_df"]
+    try:
+        for name, value in values.items():
+            setattr(state, name, value)
+        PLOTS["plot_opt"] = view.figure
+        PLOTS["opt_df"] = view.timeseries
+        ctrl.update_opt_plot(view.figure)
+    except Exception:
+        for name, value in previous.items():
+            setattr(state, name, value)
+        PLOTS["plot_opt"] = previous_plot
+        PLOTS["opt_df"] = previous_frame
+        raise
 
 
 @asynchronous.task
@@ -211,6 +364,22 @@ async def optimize_async():
         state.opt_opt_npv = summary["opt_npv"]
         state.opt_improvement = summary["improvement_pct"]
         state.opt_converged = summary["converged"]
+        state.opt_result_contract = "manual_legacy"
+        state.opt_termination_reason = "not_reported"
+        state.opt_optimizer_converged = False
+        state.opt_candidate_feasible = False
+        state.opt_candidate_improved = summary["converged"]
+        state.opt_recommended_case = (
+            "optimized" if summary["converged"] else "baseline"
+        )
+        state.opt_evaluations = 0
+        state.opt_currency = "$"
+        state.opt_improvement_available = True
+        state.opt_warnings = [
+            "Legacy manual driver does not report production termination semantics."
+        ]
+        state.opt_controls = []
+        state.opt_rate_unit = "m3/day"
         state.opt_n_variables = summary["n_variables"]
         state.opt_iterations = summary.get("iterations", 0)
         state.opt_report_max_iterations = summary.get("max_it", int(float(state.opt_max_iterations)))
@@ -226,6 +395,7 @@ async def optimize_async():
         wells = sorted(df["well"].unique()) if "well" in df else []
         state.opt_wellnames = ["Field"] + wells
         state.opt_wellToShow = "Field"
+        state.opt_dataOptions = list(LEGACY_OPT_SERIES)
         ctrl.update_opt_plot(fig)
         state.optimizing = False
         state.optResultReady = True
@@ -278,7 +448,12 @@ def add_opt_line():
     fig, df = PLOTS["plot_opt"], PLOTS["opt_df"]
     if fig is None or df is None or state.opt_dataToShow is None:
         return
-    col = OPT_SERIES[state.opt_dataToShow]
+    series = (
+        AGENT_OPT_SERIES
+        if "baseline_oil_production_sm3_per_day" in df
+        else LEGACY_OPT_SERIES
+    )
+    col = series[state.opt_dataToShow]
     if col not in df:
         return
     well = state.opt_wellToShow or "Field"
@@ -398,17 +573,40 @@ def render_optimization():
                         location="bottom")
                 with vuetify.VMenu(activator="parent", location='bottom', close_on_content_click=False):
                     with vuetify.VCard(classes='pa-2'):
-                        vuetify.VCardText("NPV without optimization {{ (opt_base_npv/1e6).toFixed(3) }} MM$", 
+                        vuetify.VCardText("Baseline discounted NPV: {{ (opt_base_npv/1e6).toFixed(3) }} MM {{ opt_currency }}",
                             classes=text_classes, style=text_style)
-                        vuetify.VCardText("NPV with optimization {{ (opt_opt_npv/1e6).toFixed(3) }} MM$",
+                        vuetify.VCardText("Candidate discounted NPV: {{ (opt_opt_npv/1e6).toFixed(3) }} MM {{ opt_currency }}",
                             classes=text_classes, style=text_style)
-                        vuetify.VCardText("NPV gain {{ ((opt_opt_npv-opt_base_npv)/1e6).toFixed(3) }} MM$",
+                        vuetify.VCardText("NPV delta: {{ ((opt_opt_npv-opt_base_npv)/1e6).toFixed(3) }} MM {{ opt_currency }}",
                             classes=text_classes, style=text_style)
                         vuetify.VCardText("NPV relative change {{ opt_improvement.toFixed(1) }}%",
+                            v_if="opt_improvement_available",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("NPV relative change: not defined for near-zero baseline",
+                            v_if="!opt_improvement_available",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Termination: {{ opt_termination_reason }}",
+                            v_if="opt_result_contract === 'agent_v1'",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Optimizer converged: {{ opt_optimizer_converged ? 'yes' : 'no' }}",
+                            v_if="opt_result_contract === 'agent_v1'",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Candidate feasible: {{ opt_candidate_feasible ? 'yes' : 'no' }}",
+                            v_if="opt_result_contract === 'agent_v1'",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Candidate improved: {{ opt_candidate_improved ? 'yes' : 'no' }}",
+                            v_if="opt_result_contract === 'agent_v1'",
+                            classes=text_classes, style=text_style)
+                        vuetify.VCardText("Recommendation: {{ opt_recommended_case }}",
+                            v_if="opt_result_contract === 'agent_v1'",
                             classes=text_classes, style=text_style)
                         vuetify.VCardText("Number of variables: {{ opt_n_variables }}",
                             classes=text_classes, style=text_style)
+                        vuetify.VCardText("Iterations: {{ opt_iterations }}; evaluations: {{ opt_evaluations }}",
+                            v_if="opt_result_contract === 'agent_v1'",
+                            classes=text_classes, style=text_style)
                         vuetify.VCardText("Iterations: {{ opt_iterations }} / {{ opt_report_max_iterations }}",
+                            v_if="opt_result_contract === 'manual_legacy'",
                             classes=text_classes, style=text_style)
                         vuetify.VCardText("Wells: {{ opt_n_wells_producer }} producers, {{ opt_n_wells_injector }} injectors, {{ opt_n_wells_shut }} shut",
                             classes=text_classes, style=text_style)
@@ -417,6 +615,24 @@ def render_optimization():
                         vuetify.VCardText("{{ opt_result_message }}",
                             classes=text_classes,
                             style="white-space: normal; overflow-wrap: anywhere; max-width: 900px")
+                        html.Div(
+                            "Warning: {{ warning }}",
+                            v_for="warning in opt_warnings",
+                            classes="text-warning mt-1",
+                            style="font-size: 12px; max-width: 900px",
+                        )
+                        html.Div(
+                            "Validated controls (display only; not applied):",
+                            v_if="opt_result_contract === 'agent_v1' && opt_controls.length",
+                            classes="mt-2 font-weight-medium",
+                        )
+                        html.Div(
+                            "Period {{ control.period }} — {{ control.well }} ({{ control.role }}): "
+                            "{{ control.candidate_bhp_bar }} bar, bounds "
+                            "[{{ control.lower_bound_bar }}, {{ control.upper_bound_bar }}] bar",
+                            v_for="control in opt_controls",
+                            style="font-size: 12px; white-space: normal",
+                        )
 
         with vuetify.VRow(v_if="optimizing", style="width: 100%; height: 70vh; align-items: center"):
             with vuetify.VCol(classes="pa-1 text-center"):
@@ -428,11 +644,11 @@ def render_optimization():
                 with vuetify.VCard(variant="text"):
                     vuetify.VCardText("Optimizatation in progress, please wait", style=text_style)
                 
-        with vuetify.VRow(v_if="!optimizing & optResultReady  & (!opt_converged | optimizationFailed)",
+        with vuetify.VRow(v_if="!optimizing && optResultReady && (optimizationFailed || (opt_result_contract === 'manual_legacy' && !opt_converged))",
             style="width: 100%; height: 70vh; align-items: center"):
-                with vuetify.VCard(v_if="!opt_converged", variant='text'):
+                with vuetify.VCard(v_if="opt_result_contract === 'manual_legacy' && !opt_converged", variant='text'):
                     vuetify.VIcon('mdi-close-thick', color="error", size='large')
-                    vuetify.VCardText('Optimizer failed to converge', style=text_style)
+                    vuetify.VCardText('Legacy driver did not report an improved candidate', style=text_style)
                 with vuetify.VCard(v_if="optimizationFailed", variant='text'):
                     vuetify.VIcon('mdi-close-thick', color="error", size='large')
                     vuetify.VCardText('Failed: ' + '{{opt_errMessage}}', style=text_style)

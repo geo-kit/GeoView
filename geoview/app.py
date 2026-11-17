@@ -131,6 +131,7 @@ def _start_agent_process(qualified_model, environment):
         "PYTHONIOENCODING": "utf-8",
         "GEOAGENT_MODEL": qualified_model,
         "GEOVIEW_RESULT_DIR": str(AGENT_RESULT_DIR),
+        "GEOKIT_GEOVIEW_PYTHON": sys.executable,
     }
 
     process = subprocess.Popen(
