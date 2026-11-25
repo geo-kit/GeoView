@@ -2,6 +2,7 @@
 import multiprocessing
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 
@@ -147,6 +148,7 @@ def _start_agent_process(qualified_model, environment):
         ],
         cwd=agent_dir,
         env=agent_env,
+        start_new_session=os.name != "nt",
     )
     # Name the agent that actually started: the profile is an environment
     # variable, so the console is the only place to catch a stale one.
@@ -159,16 +161,37 @@ def _start_agent_process(qualified_model, environment):
 
 
 def _stop_agent_process(process):
-    """Stop a GeoAgent process started by this application."""
+    """Stop this application's agent and its active calculation descendants."""
     if process is None or process.poll() is not None:
         return
 
-    process.terminate()
+    if os.name == "nt":
+        stopped = subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if stopped.returncode and process.poll() is None:
+            raise RuntimeError(f"Could not stop GeoAgent process tree: {stopped.stderr.strip()}")
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
+    finally:
+        if os.name != "nt":
+            # The agent may exit before a child handles SIGTERM.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
     print("GeoAgent stopped.")
 
 
@@ -276,9 +299,16 @@ def server_start():
         if agent_launch:
             agent_process = _start_agent_process(*agent_launch)
             ctrl.on_server_ready.add(lambda *a, **kw: watch_agent_results())
-        server.start(timeout=100)
+        # Keep the agent session alive while the browser reconnects.
+        server.start(timeout=0 if agent_enabled else 100)
     finally:
         _stop_agent_process(agent_process)
+        jserver['queue'].put(None)
+        process.join(timeout=5)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        manager.shutdown()
 
 
 if __name__ == "__main__":
