@@ -23,7 +23,7 @@ server.cli.add_argument(
 )
 server.cli.add_argument(
     "--agent-provider",
-    choices=("lmstudio", "ollama", "openai"),
+    choices=("lmstudio", "ollama", "gemini", "openai"),
     help="model provider for GeoAgent (prompted when omitted interactively)",
 )
 server.cli.add_argument(
@@ -41,10 +41,20 @@ server.cli.add_argument(
     action="store_true",
     help="Russian wording in the GeoAgent chat (English otherwise)",
 )
+server.cli.add_argument(
+    "--agent-graph",
+    choices=("agent", "supervisor"),
+    default="agent",
+    help="LangGraph assistant exposed in the GeoView chat",
+)
 args = server.cli.parse_args()
 
 state.vtk_remote = True if args.vtk_remote else False
 agent_enabled = bool(args.agent)
+AGENT_GRAPH = args.agent_graph
+AGENT_ASSISTANT_ID = (
+    "GeoAgentSupervisor" if AGENT_GRAPH == "supervisor" else "GeoAgent"
+)
 
 # Language of the GeoAgent chat and of the context block sent with every message.
 # English unless --ru is passed; the strings themselves live in src/agent_text.py.

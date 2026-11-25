@@ -10,6 +10,33 @@ Lightweight. Modern. Open source.
 
 <img src="static/geoagent_demo.gif" width="70%"/>
 
+## GeoView mode selection
+
+With the Pro profile (`GEOVIEW_AGENT_PROFILE=pro`), the GeoView chat offers
+**Workflow**, **Solo**, **Team · V**, **Team · VS**, and **Team · VSC**.
+The default is **Team · VS**. All five graphs run in one LangGraph server;
+changing the mode does not restart it or change the selected LLM.
+
+Each change starts a fresh agent conversation. Earlier messages remain visible
+above a new-dialogue separator, but their checkpoints and approvals are not
+transferred. The loaded GeoView model and already applied results remain.
+Selection is disabled during a request, approval, model loading, or simulation.
+Results and commands from an earlier conversation are ignored.
+After a stream disconnect, selection stays locked until the server confirms
+completion; a pending approval is restored from the conversation checkpoint.
+
+Solo/Team support Stop through their Julia job runner. Workflow calculations
+must finish before changing mode; cancelling their Python request does not
+guarantee that Julia has stopped. Excel/Word reading requires `openpyxl` and
+`python-docx` in the agent environment.
+
+The explicit graph IDs are `GeoAgentWorkflows`, `GeoAgentSolo`,
+`GeoAgentTeamV`, `GeoAgentTeamVS`, and `GeoAgentTeamVSC`. `GeoAgent` remains
+an alias for Workflow; `GeoAgentTeam` preserves `GEOAGENT_TEAM_STAGE` selection
+for existing standalone clients. GeoView uses the explicit IDs.
+
+The Pro chat currently uses Russian wording; the existing `--ru` flag remains accepted.
+
 ## Features
 
 * **ECLIPSE Format Support:** Parsing of standard reservoir model files
